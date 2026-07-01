@@ -1,0 +1,51 @@
+@echo off
+setlocal
+
+title Iniciando PromoWatcher...
+
+REM ===== CONFIGURACAO =====
+set "PROJETO=C:\Users\gille\OneDrive\Documents\Desenvolvimento\LENEP\PYTHON\PromoWatcher"
+set "SCRIPT=watch_promos.py"
+set "ENV=promowatcher"
+
+REM ===== TENTA LOCALIZAR O PYTHON DO AMBIENTE CONDA =====
+set "PY_ENV="
+
+if exist "%USERPROFILE%\anaconda3\envs\%ENV%\python.exe" set "PY_ENV=%USERPROFILE%\anaconda3\envs\%ENV%\python.exe"
+if not defined PY_ENV if exist "%USERPROFILE%\miniconda3\envs\%ENV%\python.exe" set "PY_ENV=%USERPROFILE%\miniconda3\envs\%ENV%\python.exe"
+if not defined PY_ENV if exist "C:\ProgramData\anaconda3\envs\%ENV%\python.exe" set "PY_ENV=C:\ProgramData\anaconda3\envs\%ENV%\python.exe"
+if not defined PY_ENV if exist "C:\ProgramData\miniconda3\envs\%ENV%\python.exe" set "PY_ENV=C:\ProgramData\miniconda3\envs\%ENV%\python.exe"
+
+if not defined PY_ENV (
+    echo [ERRO] Nao encontrei o python.exe do ambiente "%ENV%".
+    echo Verifique se o ambiente existe e se o nome esta correto.
+    echo.
+    echo Caminhos testados:
+    echo - %USERPROFILE%\anaconda3\envs\%ENV%\python.exe
+    echo - %USERPROFILE%\miniconda3\envs\%ENV%\python.exe
+    echo - C:\ProgramData\anaconda3\envs\%ENV%\python.exe
+    echo - C:\ProgramData\miniconda3\envs\%ENV%\python.exe
+    pause
+    exit /b 1
+)
+
+if not exist "%PROJETO%\%SCRIPT%" (
+    echo [ERRO] Script nao encontrado:
+    echo %PROJETO%\%SCRIPT%
+    pause
+    exit /b 1
+)
+
+cd /d "%PROJETO%"
+
+echo [OK] Usando Python do ambiente:
+echo %PY_ENV%
+echo [OK] Executando %SCRIPT%...
+echo.
+
+"%PY_ENV%" "%PROJETO%\%SCRIPT%"
+
+echo.
+echo Codigo de saida: %errorlevel%
+pause
+endlocal
