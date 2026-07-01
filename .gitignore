@@ -1,2 +1,3 @@
-.bat
-.env
+*.bat
+*.env
+*.session
