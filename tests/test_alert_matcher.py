@@ -1,6 +1,12 @@
 from app.models import AlertDef
 from app.parser.normalizer import normalize_text
-from app.rules.alert_matcher import match_alert, match_alerts, sync_alerts_to_db
+from app.rules.alert_matcher import (
+    load_alerts,
+    match_alert,
+    match_alerts,
+    save_alerts,
+    sync_alerts_to_db,
+)
 
 
 def _norm(text):
@@ -81,3 +87,44 @@ def test_sync_alerts_to_db_assigns_ids_and_is_idempotent(db_conn):
 
     count = db_conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
     assert count == 1
+
+
+def test_save_and_load_alerts_round_trip(tmp_path):
+    path = str(tmp_path / "alerts.json")
+    original = [
+        AlertDef(
+            name="Notebook RTX 4050", enabled=True, alert_type="PRODUCT_RULE",
+            required=["notebook", "rtx 4050"], any=["16gb"], exclude=["usado"],
+            max_price=4500.0, min_discount_percent=10.0, bug_mode=False,
+            min_score=70, send_to_telegram=True,
+        ),
+        AlertDef(
+            name="Possível BUG geral", enabled=False, alert_type="BUG_RULE",
+            required=[], any=["bug"], exclude=[], max_price=None,
+            min_discount_percent=0, bug_mode=True, min_score=0,
+            send_to_telegram=False,
+        ),
+    ]
+
+    save_alerts(path, original)
+    loaded = load_alerts(path)
+
+    assert len(loaded) == 2
+    for expected, actual in zip(original, loaded):
+        assert actual.name == expected.name
+        assert actual.enabled == expected.enabled
+        assert actual.alert_type == expected.alert_type
+        assert actual.required == expected.required
+        assert actual.any == expected.any
+        assert actual.exclude == expected.exclude
+        assert actual.max_price == expected.max_price
+        assert actual.min_discount_percent == expected.min_discount_percent
+        assert actual.bug_mode == expected.bug_mode
+        assert actual.min_score == expected.min_score
+        assert actual.send_to_telegram == expected.send_to_telegram
+
+
+def test_save_alerts_does_not_leave_tmp_file(tmp_path):
+    path = str(tmp_path / "alerts.json")
+    save_alerts(path, [AlertDef(name="X", any=["bug"])])
+    assert not (tmp_path / "alerts.json.tmp").exists()

@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -28,6 +29,33 @@ def load_alerts(path: str) -> List[AlertDef]:
             send_to_telegram=item.get("send_to_telegram", True),
         ))
     return alerts
+
+
+def save_alerts(path: str, alerts: List[AlertDef]) -> None:
+    """Serializa alerts.json de volta para o disco. Escrita atômica
+    (arquivo temporário + os.replace) para não corromper o arquivo se o
+    processo for interrompido no meio da escrita."""
+    raw = [
+        {
+            "name": a.name,
+            "enabled": a.enabled,
+            "alert_type": a.alert_type,
+            "required": a.required,
+            "any": a.any,
+            "exclude": a.exclude,
+            "max_price": a.max_price,
+            "min_discount_percent": a.min_discount_percent,
+            "bug_mode": a.bug_mode,
+            "min_score": a.min_score,
+            "send_to_telegram": a.send_to_telegram,
+        }
+        for a in alerts
+    ]
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(raw, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.replace(tmp_path, path)
 
 
 def sync_alerts_to_db(conn: sqlite3.Connection, alerts: List[AlertDef]) -> List[AlertDef]:

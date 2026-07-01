@@ -90,7 +90,3 @@ def dashboard_counts(conn: sqlite3.Connection, *, since: str) -> dict:
         "bugs": bugs,
         "top_groups": top_groups,
     }
-
-
-def list_alerts(conn: sqlite3.Connection) -> list:
-    return conn.execute("SELECT * FROM alerts ORDER BY name").fetchall()
