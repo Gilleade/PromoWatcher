@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Possível BUG geral",
+    "enabled": true,
+    "alert_type": "BUG_RULE",
+    "required": [],
+    "any": ["bug"],
+    "exclude": [],
+    "max_price": null,
+    "min_discount_percent": 0,
+    "bug_mode": true,
+    "min_score": 0,
+    "send_to_telegram": true
+  }
+]
