@@ -3,7 +3,35 @@ from app.database import (
     insert_occurrence,
     insert_promotion,
     insert_raw_message,
+    upsert_alert,
 )
+
+
+def _upsert_bug_alert(conn, *, min_score=0):
+    return upsert_alert(
+        conn, name="Possível BUG geral", enabled=True, alert_type="BUG_RULE",
+        required_terms="[]", optional_terms='["bug"]', excluded_terms="[]",
+        min_price=None, max_price=None, min_discount_percent=0, bug_mode=True,
+        min_score=min_score, send_to_telegram=True,
+    )
+
+
+def test_upsert_alert_creates_new_row(db_conn):
+    alert_id = _upsert_bug_alert(db_conn)
+    row = db_conn.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+    assert row["name"] == "Possível BUG geral"
+    assert row["bug_mode"] == 1
+
+
+def test_upsert_alert_updates_existing_row_by_name(db_conn):
+    first_id = _upsert_bug_alert(db_conn, min_score=0)
+    second_id = _upsert_bug_alert(db_conn, min_score=50)
+
+    assert first_id == second_id
+    row = db_conn.execute("SELECT * FROM alerts WHERE id = ?", (first_id,)).fetchone()
+    assert row["min_score"] == 50
+    count = db_conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 1
 
 
 def test_init_db_creates_tables(db_conn):

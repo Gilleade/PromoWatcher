@@ -77,14 +77,14 @@ async def resolve_url_async(url: str, *, loop: Optional[asyncio.AbstractEventLoo
     return await loop.run_in_executor(executor, resolve_url_sync, url, timeout)
 
 
-def resolve_links(links: list) -> LinkResult:
+def resolve_links(links: list, timeout: float = 5.0) -> LinkResult:
     """Decide o link principal a partir de uma lista extraída da mensagem,
     seguindo a regra de fallback obrigatória (nunca descarta a promoção)."""
     if not links:
         return LinkResult(url="", status=LinkStatus.NO_LINK, store_domain=None)
 
     primary = links[0]
-    result = resolve_url_sync(primary)
+    result = resolve_url_sync(primary, timeout=timeout)
     if len(links) > 1 and result.status in (LinkStatus.CLEANED, LinkStatus.RESOLVED):
         return LinkResult(url=result.url, status=LinkStatus.MULTIPLE_LINKS, store_domain=result.store_domain)
     return result

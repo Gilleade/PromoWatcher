@@ -1,6 +1,6 @@
 from app.models import AlertDef
 from app.parser.normalizer import normalize_text
-from app.rules.alert_matcher import match_alert, match_alerts
+from app.rules.alert_matcher import match_alert, match_alerts, sync_alerts_to_db
 
 
 def _norm(text):
@@ -67,3 +67,17 @@ def test_tolerant_matching_ignores_accents_and_dashes():
     text = _norm("Comprei uma lava-louças nova")
     result = match_alert(text, alert)
     assert result.matched is True
+
+
+def test_sync_alerts_to_db_assigns_ids_and_is_idempotent(db_conn):
+    alerts = [AlertDef(name="Possível BUG geral", any=["bug"], bug_mode=True)]
+
+    synced = sync_alerts_to_db(db_conn, alerts)
+    assert synced[0].id is not None
+    first_id = synced[0].id
+
+    synced_again = sync_alerts_to_db(db_conn, alerts)
+    assert synced_again[0].id == first_id
+
+    count = db_conn.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+    assert count == 1

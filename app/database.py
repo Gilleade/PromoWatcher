@@ -5,10 +5,10 @@ from typing import Optional
 _SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
 
 
-def get_connection(db_path: str) -> sqlite3.Connection:
+def get_connection(db_path: str, *, check_same_thread: bool = True) -> sqlite3.Connection:
     if db_path != ":memory:":
         os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=10)
+    conn = sqlite3.connect(db_path, timeout=10, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -101,6 +101,42 @@ def insert_notification(conn: sqlite3.Connection, *, promotion_id: int, alert_id
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (promotion_id, alert_id, channel, message_sent, status, error_message),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def upsert_alert(conn: sqlite3.Connection, *, name: str, enabled: bool, alert_type: str,
+                  required_terms, optional_terms, excluded_terms, min_price, max_price,
+                  min_discount_percent, bug_mode: bool, min_score: int,
+                  send_to_telegram: bool) -> int:
+    """Insere ou atualiza um alerta por nome (alerts.json é a fonte da verdade)."""
+    existing = conn.execute("SELECT id FROM alerts WHERE name = ?", (name,)).fetchone()
+    if existing:
+        conn.execute(
+            """
+            UPDATE alerts SET enabled=?, alert_type=?, required_terms=?, optional_terms=?,
+                excluded_terms=?, min_price=?, max_price=?, min_discount_percent=?,
+                bug_mode=?, min_score=?, send_to_telegram=?, updated_at=datetime('now')
+            WHERE id = ?
+            """,
+            (int(enabled), alert_type, required_terms, optional_terms, excluded_terms,
+             min_price, max_price, min_discount_percent, int(bug_mode), min_score,
+             int(send_to_telegram), existing["id"]),
+        )
+        conn.commit()
+        return existing["id"]
+
+    cur = conn.execute(
+        """
+        INSERT INTO alerts
+            (name, enabled, alert_type, required_terms, optional_terms, excluded_terms,
+             min_price, max_price, min_discount_percent, bug_mode, min_score, send_to_telegram)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (name, int(enabled), alert_type, required_terms, optional_terms, excluded_terms,
+         min_price, max_price, min_discount_percent, int(bug_mode), min_score,
+         int(send_to_telegram)),
     )
     conn.commit()
     return cur.lastrowid

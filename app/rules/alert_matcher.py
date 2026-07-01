@@ -1,8 +1,10 @@
 import json
 import re
+import sqlite3
 from dataclasses import dataclass, field
 from typing import List
 
+from app.database import upsert_alert
 from app.models import AlertDef
 from app.parser.normalizer import normalize_text
 
@@ -25,6 +27,28 @@ def load_alerts(path: str) -> List[AlertDef]:
             min_score=item.get("min_score", 0),
             send_to_telegram=item.get("send_to_telegram", True),
         ))
+    return alerts
+
+
+def sync_alerts_to_db(conn: sqlite3.Connection, alerts: List[AlertDef]) -> List[AlertDef]:
+    """Espelha alerts.json (fonte da verdade) na tabela `alerts`, preenchendo
+    o id de cada AlertDef para que promotions.matched_alert_id seja válido."""
+    for alert in alerts:
+        alert.id = upsert_alert(
+            conn,
+            name=alert.name,
+            enabled=alert.enabled,
+            alert_type=alert.alert_type,
+            required_terms=json.dumps(alert.required),
+            optional_terms=json.dumps(alert.any),
+            excluded_terms=json.dumps(alert.exclude),
+            min_price=None,
+            max_price=alert.max_price,
+            min_discount_percent=alert.min_discount_percent,
+            bug_mode=alert.bug_mode,
+            min_score=alert.min_score,
+            send_to_telegram=alert.send_to_telegram,
+        )
     return alerts
 
 
