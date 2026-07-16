@@ -2,6 +2,8 @@ import os
 import sqlite3
 from typing import Optional
 
+from app.migrations import apply_pending
+
 _SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
 
 
@@ -11,6 +13,7 @@ def get_connection(db_path: str, *, check_same_thread: bool = True) -> sqlite3.C
     conn = sqlite3.connect(db_path, timeout=10, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -21,6 +24,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
     with open(_SCHEMA_PATH, "r", encoding="utf-8") as f:
         conn.executescript(f.read())
     conn.commit()
+    apply_pending(conn)
     return conn
 
 
