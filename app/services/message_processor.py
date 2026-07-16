@@ -1,16 +1,66 @@
+import json
 import sqlite3
 from dataclasses import dataclass
 from typing import List, Optional
 
-from app.database import insert_occurrence, insert_promotion, insert_raw_message
+from app.database import (
+    insert_match_queue_item,
+    insert_occurrence,
+    insert_promotion,
+    insert_raw_message,
+    update_promotion_product_match,
+)
 from app.models import AlertDef
 from app.parser.link_resolver import LinkResult, LinkStatus, resolve_links
 from app.parser.text_parser import ParsedMessage, parse_message
+from app.products.matcher import DECISION_NEEDS_REVIEW
+from app.products.product_service import get_or_create_product
+from app.products.spec_extractor import extract_specs
 from app.rules.alert_matcher import MatchResult, match_alerts
 from app.rules.deduplicator import compute_dedupe_key, find_existing_promotion_id
 from app.rules.score import ScoreResult, compute_score
 
 NO_MATCH_REASON = "Ignorado: nenhum alerta cadastrado casou com a mensagem."
+
+
+def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int, parsed: ParsedMessage) -> None:
+    """Casa a promoção com um perfil de produto do catálogo. Só roda quando há
+    preço (mensagens sem preço não viram produto). Não tem try/except próprio
+    de propósito: extract_specs() já nunca lança exceção (retorna specs
+    vazias na dúvida), e um erro aqui em diante seria um bug real de SQL —
+    deixa propagar para o [handler] erro: ... do watch_promos.py, igual ao
+    resto do pipeline de alertas."""
+    if parsed.price is None:
+        return
+
+    specs = extract_specs(parsed.raw_text)
+    product_id, decision = get_or_create_product(conn, specs)
+    update_promotion_product_match(
+        conn,
+        promotion_id=promotion_id,
+        product_id=product_id,
+        match_status=decision.decision,
+        confidence=decision.confidence,
+    )
+    if decision.decision == DECISION_NEEDS_REVIEW:
+        specs_json = json.dumps({
+            "brand": specs.brand,
+            "model": specs.model,
+            "storage_gb": specs.storage_gb,
+            "ram_gb": specs.ram_gb,
+            "release_year": specs.release_year,
+            "category": specs.category,
+        })
+        candidates_json = json.dumps([
+            {"product_id": c.product_id, "confidence": c.confidence, "reason": c.reason}
+            for c in decision.candidates
+        ])
+        insert_match_queue_item(
+            conn,
+            promotion_id=promotion_id,
+            extracted_specs_json=specs_json,
+            candidate_products_json=candidates_json,
+        )
 
 
 @dataclass
@@ -125,6 +175,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             status="IGNORED",
             score=None,
         )
+        _apply_product_matching(conn, promotion_id, parsed)
         return ProcessResult(
             status="NEW_IGNORED",
             raw_message_id=raw_message_id,
@@ -155,6 +206,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
         score=best_score.score,
         matched_alert_id=best_match.alert.id,
     )
+    _apply_product_matching(conn, promotion_id, parsed)
 
     return ProcessResult(
         status="NEW_APPROVED",

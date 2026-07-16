@@ -191,3 +191,32 @@ def touch_product_seen(conn: sqlite3.Connection, product_id: int) -> None:
         (product_id,),
     )
     conn.commit()
+
+
+def update_promotion_product_match(conn: sqlite3.Connection, *, promotion_id: int,
+                                    product_id: Optional[int], match_status: str,
+                                    confidence: Optional[float]) -> None:
+    conn.execute(
+        """
+        UPDATE promotions
+        SET product_id = ?, product_match_status = ?, product_match_confidence = ?
+        WHERE id = ?
+        """,
+        (product_id, match_status, confidence, promotion_id),
+    )
+    conn.commit()
+
+
+def insert_match_queue_item(conn: sqlite3.Connection, *, promotion_id: int,
+                             extracted_specs_json: str,
+                             candidate_products_json: Optional[str] = None) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO product_match_queue
+            (promotion_id, extracted_specs_json, candidate_products_json)
+        VALUES (?, ?, ?)
+        """,
+        (promotion_id, extracted_specs_json, candidate_products_json),
+    )
+    conn.commit()
+    return cur.lastrowid
