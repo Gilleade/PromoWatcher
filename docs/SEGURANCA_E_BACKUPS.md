@@ -60,9 +60,18 @@ crie um backup local completo:
 ```powershell
 $ts = Get-Date -Format "yyyyMMdd_HHmmss"
 $dest = "backups\promowatcher_backup_${ts}_antes_<descricao>.zip"
-$items = Get-ChildItem -Path . -Exclude ".git",".claude","backups"
-Compress-Archive -Path $items.FullName -DestinationPath $dest -Force
+$stage = Join-Path $env:TEMP "promowatcher_stage_$ts"
+robocopy . $stage /E /XD .git .claude backups node_modules __pycache__ .pytest_cache dist /NFL /NDL /NJH /NJS
+Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $dest -Force
+Remove-Item -Recurse -Force $stage
 ```
+
+**Importante:** desde que o projeto ganhou o frontend web (`web/`), um
+`Get-ChildItem -Exclude` simples não basta — ele só filtra itens de
+primeiro nível, então `web/node_modules` (centenas de MB) acaba entrando
+no zip. Use o `robocopy /XD` acima, que exclui a pasta em qualquer
+profundidade, ou rode `npm run build` fora e ignore `web/node_modules`
+manualmente antes de compactar.
 
 Padrão de nome:
 

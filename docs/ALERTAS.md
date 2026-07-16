@@ -1,27 +1,35 @@
 # Alertas — `alerts.json`
 
-`alerts.json`, na raiz do projeto, é a fonte da verdade dos alertas.
-O watcher recarrega o arquivo automaticamente quando ele é modificado
-(sem precisar reiniciar) e sincroniza os alertas com a tabela `alerts`
-do banco (necessário para o dashboard e para vincular cada promoção ao
-alerta que a aprovou).
+`alerts.json`, na raiz do projeto, é a whitelist **global** de alertas —
+vale para qualquer promoção, de qualquer produto. O watcher recarrega o
+arquivo automaticamente quando ele é modificado (sem precisar reiniciar)
+e sincroniza os alertas com a tabela `alerts` do banco (necessário para
+o dashboard e para vincular cada promoção ao alerta que a aprovou).
+
+Isso é diferente do **alerta por produto** (favoritar um produto
+específico e pedir para ser notificado só dele) — os dois mecanismos
+coexistem e notificam o mesmo destino no Telegram (`NOTIFY_CHAT`); o
+alerta por produto é gerenciado na tela de perfil do produto no
+frontend web, não neste arquivo.
 
 ## Gerenciando pela interface
 
-A aba "Alertas" da interface Streamlit permite criar, editar,
-ativar/desativar e excluir alertas sem editar o arquivo manualmente:
+A página "Alertas" do **frontend web** (`web/`, ver
+[README.md](../README.md)) é a forma recomendada de gerenciar a
+whitelist global — cria, edita, ativa/desativa e exclui alertas via API,
+sem editar o arquivo manualmente:
 
 - **+ Novo alerta**: formulário para criar um alerta do zero.
-- Cada alerta existente aparece em um expansor com um formulário
-  pré-preenchido — altere os campos e clique em "Salvar alterações".
-- **Excluir alerta**: marque "Confirmar exclusão" e clique em "Excluir
-  alerta". Isso remove o alerta de `alerts.json` (ele deixa de valer
-  para novas mensagens); o histórico de promoções antigas que já
-  usaram esse alerta continua preservado no banco.
+- Cada alerta existente tem os botões "Editar", "Ativar/Desativar" e
+  "Excluir" (com confirmação em dois cliques).
 
-Toda alteração feita pela interface é gravada em `alerts.json` e
-sincronizada imediatamente com a tabela `alerts` do banco — o watcher
-pega a mudança no próximo ciclo de recarregamento (até 30s).
+A aba "Alertas" da interface Streamlit legada faz a mesma coisa e
+continua funcionando (útil para depuração pontual), mas não recebe mais
+funcionalidades novas.
+
+Toda alteração é gravada em `alerts.json` e sincronizada imediatamente
+com a tabela `alerts` do banco — o watcher pega a mudança no próximo
+ciclo de recarregamento (até 30s).
 
 ## Formato
 
