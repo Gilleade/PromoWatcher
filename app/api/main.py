@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import dashboard, feed, products
+from app.api.routers import admin, coupons, dashboard, favorites, feed, products
 
 app = FastAPI(title="PromoWatcher API", version="0.1.0")
 
@@ -17,6 +17,9 @@ app.add_middleware(
 app.include_router(feed.router, prefix="/api/v1")
 app.include_router(products.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(favorites.router, prefix="/api/v1")
+app.include_router(coupons.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

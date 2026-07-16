@@ -54,3 +54,82 @@ class DashboardSummary(BaseModel):
     bugs_today: int
     coupons_active: int
     pending_review: int
+
+
+class FavoriteStatus(BaseModel):
+    product_id: int
+    is_favorite: bool
+
+
+class ProductAlertIn(BaseModel):
+    enabled: bool = True
+    max_price: Optional[float] = None
+    send_to_telegram: bool = True
+
+
+class ProductAlertOut(BaseModel):
+    product_id: int
+    enabled: bool
+    max_price: Optional[float] = None
+    send_to_telegram: bool
+
+
+class ProductStatusOut(BaseModel):
+    product_id: int
+    status: str
+
+
+class MergeRequest(BaseModel):
+    source_product_id: int
+    reason: Optional[str] = None
+
+
+class MergeResult(BaseModel):
+    source_product_id: int
+    target_product_id: int
+
+
+class ProductAdmin(BaseModel):
+    id: int
+    canonical_title: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    category: Optional[str] = None
+    status: str
+    merged_into_product_id: Optional[int] = None
+    last_seen_at: str
+
+
+class MatchQueueItem(BaseModel):
+    id: int
+    promotion_id: int
+    status: str
+    attempts: int
+    extracted_specs_json: str
+    candidate_products_json: Optional[str] = None
+    created_at: str
+
+
+class MatchQueueResolveRequest(BaseModel):
+    action: str  # assign | create_new | ignore
+    product_id: Optional[int] = None
+
+
+class MatchQueueResolveResult(BaseModel):
+    action: str
+    product_id: Optional[int] = None
+
+
+class CouponOut(BaseModel):
+    id: int
+    code: Optional[str] = None
+    discount_label: Optional[str] = None
+    description: Optional[str] = None
+    store_name: Optional[str] = None
+    store_domain: Optional[str] = None
+    url: Optional[str] = None
+    status: str
+    source_chat_title: Optional[str] = None
+    repeat_count: int
+    first_seen_at: str
+    last_seen_at: str

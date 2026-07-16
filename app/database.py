@@ -363,3 +363,134 @@ def touch_coupon_seen(conn: sqlite3.Connection, coupon_id: int) -> None:
         (coupon_id,),
     )
     conn.commit()
+
+
+def list_active_coupons(conn: sqlite3.Connection, *, status: str = "ACTIVE", limit: int = 100) -> list:
+    return conn.execute(
+        "SELECT * FROM coupons_standalone WHERE status = ? ORDER BY last_seen_at DESC LIMIT ?",
+        (status, limit),
+    ).fetchall()
+
+
+def insert_favorite(conn: sqlite3.Connection, product_id: int) -> None:
+    conn.execute("INSERT OR IGNORE INTO favorites (product_id) VALUES (?)", (product_id,))
+    conn.commit()
+
+
+def delete_favorite(conn: sqlite3.Connection, product_id: int) -> None:
+    conn.execute("DELETE FROM favorites WHERE product_id = ?", (product_id,))
+    conn.commit()
+
+
+def list_favorite_products(conn: sqlite3.Connection) -> list:
+    return conn.execute(
+        """
+        SELECT p.* FROM products p
+        JOIN favorites f ON f.product_id = p.id
+        ORDER BY f.created_at DESC
+        """
+    ).fetchall()
+
+
+def upsert_product_alert(conn: sqlite3.Connection, *, product_id: int, enabled: bool,
+                          max_price: Optional[float] = None, send_to_telegram: bool = True) -> int:
+    existing = conn.execute(
+        "SELECT id FROM product_alerts WHERE product_id = ?", (product_id,)
+    ).fetchone()
+    if existing:
+        conn.execute(
+            """
+            UPDATE product_alerts
+            SET enabled = ?, max_price = ?, send_to_telegram = ?, updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (int(enabled), max_price, int(send_to_telegram), existing["id"]),
+        )
+        conn.commit()
+        return existing["id"]
+
+    cur = conn.execute(
+        """
+        INSERT INTO product_alerts (product_id, enabled, max_price, send_to_telegram)
+        VALUES (?, ?, ?, ?)
+        """,
+        (product_id, int(enabled), max_price, int(send_to_telegram)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_product_status(conn: sqlite3.Connection, product_id: int, status: str) -> None:
+    conn.execute(
+        "UPDATE products SET status = ?, updated_at = datetime('now') WHERE id = ?",
+        (status, product_id),
+    )
+    conn.commit()
+
+
+def list_products_admin(conn: sqlite3.Connection, *, status: Optional[str] = None,
+                         search: Optional[str] = None, limit: int = 100) -> list:
+    query = "SELECT * FROM products WHERE 1=1"
+    params: list = []
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    if search:
+        query += " AND canonical_title LIKE ?"
+        params.append(f"%{search}%")
+    query += " ORDER BY last_seen_at DESC LIMIT ?"
+    params.append(limit)
+    return conn.execute(query, params).fetchall()
+
+
+def list_match_queue(conn: sqlite3.Connection, *, status: Optional[str] = None, limit: int = 100) -> list:
+    query = "SELECT * FROM product_match_queue WHERE 1=1"
+    params: list = []
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+    return conn.execute(query, params).fetchall()
+
+
+def get_match_queue_item(conn: sqlite3.Connection, item_id: int) -> Optional[sqlite3.Row]:
+    return conn.execute("SELECT * FROM product_match_queue WHERE id = ?", (item_id,)).fetchone()
+
+
+def insert_product_merge_record(conn: sqlite3.Connection, *, source_product_id: int,
+                                 target_product_id: int, reason: Optional[str] = None) -> int:
+    cur = conn.execute(
+        "INSERT INTO product_merges (source_product_id, target_product_id, reason) VALUES (?, ?, ?)",
+        (source_product_id, target_product_id, reason),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def reassign_promotions_to_product(conn: sqlite3.Connection, *, source_product_id: int,
+                                    target_product_id: int) -> int:
+    cur = conn.execute(
+        "UPDATE promotions SET product_id = ? WHERE product_id = ?",
+        (target_product_id, source_product_id),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def reassign_price_history_to_product(conn: sqlite3.Connection, *, source_product_id: int,
+                                       target_product_id: int) -> int:
+    cur = conn.execute(
+        "UPDATE product_price_history SET product_id = ? WHERE product_id = ?",
+        (target_product_id, source_product_id),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def set_product_merged(conn: sqlite3.Connection, *, source_product_id: int, target_product_id: int) -> None:
+    conn.execute(
+        "UPDATE products SET status = 'MERGED', merged_into_product_id = ?, updated_at = datetime('now') WHERE id = ?",
+        (target_product_id, source_product_id),
+    )
+    conn.commit()

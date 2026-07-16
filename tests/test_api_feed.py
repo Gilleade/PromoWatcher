@@ -1,35 +1,10 @@
-import pytest
-from fastapi.testclient import TestClient
-
-from app.api.deps import get_db
-from app.api.main import app
 from app.database import (
-    init_db,
     insert_price_history_point,
     insert_product,
     insert_promotion,
     insert_raw_message,
     update_promotion_product_match,
 )
-
-
-@pytest.fixture
-def api_client(tmp_path):
-    db_path = str(tmp_path / "api_test.sqlite3")
-    setup_conn = init_db(db_path)
-
-    def override_get_db():
-        conn = init_db(db_path)
-        try:
-            yield conn
-        finally:
-            conn.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-    client = TestClient(app)
-    yield client, setup_conn
-    app.dependency_overrides.clear()
-    setup_conn.close()
 
 
 def _seed_product_with_promotion(conn, *, canonical_title="Motorola Moto G56 5G 256GB",

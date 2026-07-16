@@ -1,6 +1,30 @@
 import sqlite3
 from typing import Optional
 
+from app.database import (
+    list_active_coupons,
+    list_favorite_products,
+    list_match_queue,
+    list_products_admin,
+)
+
+
+def list_favorites(conn: sqlite3.Connection) -> list:
+    return list_favorite_products(conn)
+
+
+def list_products_for_admin(conn: sqlite3.Connection, *, status: Optional[str] = None,
+                             search: Optional[str] = None, limit: int = 100) -> list:
+    return list_products_admin(conn, status=status, search=search, limit=limit)
+
+
+def list_review_queue(conn: sqlite3.Connection, *, status: Optional[str] = None, limit: int = 100) -> list:
+    return list_match_queue(conn, status=status, limit=limit)
+
+
+def list_coupons(conn: sqlite3.Connection, *, status: str = "ACTIVE", limit: int = 100) -> list:
+    return list_active_coupons(conn, status=status, limit=limit)
+
 
 def list_feed_products(conn: sqlite3.Connection, *, category: Optional[str] = None,
                         limit: int = 50, offset: int = 0) -> list:
