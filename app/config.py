@@ -29,6 +29,13 @@ class Config:
 
     link_resolve_timeout: float = float(os.getenv("LINK_RESOLVE_TIMEOUT", "5"))
 
+    ollama_enabled: bool = _bool("OLLAMA_ENABLED", "true")
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_extract_model: str = os.getenv("OLLAMA_EXTRACT_MODEL", "qwen2.5:0.5b")
+    ollama_match_model: str = os.getenv("OLLAMA_MATCH_MODEL", "qwen3:4b-instruct")
+    ollama_timeout: float = float(os.getenv("OLLAMA_TIMEOUT", "20"))
+    ollama_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
+
 
 def get_config() -> Config:
     return Config()
