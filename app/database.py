@@ -144,3 +144,50 @@ def upsert_alert(conn: sqlite3.Connection, *, name: str, enabled: bool, alert_ty
     )
     conn.commit()
     return cur.lastrowid
+
+
+def insert_product(conn: sqlite3.Connection, *, canonical_title: str, variant_key: str,
+                    category: Optional[str] = None, brand: Optional[str] = None,
+                    model: Optional[str] = None, variant_label: Optional[str] = None,
+                    storage_gb: Optional[int] = None, ram_gb: Optional[int] = None,
+                    release_year: Optional[int] = None, image_url: Optional[str] = None) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO products
+            (canonical_title, category, brand, model, variant_label, storage_gb, ram_gb,
+             release_year, variant_key, image_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (canonical_title, category, brand, model, variant_label, storage_gb, ram_gb,
+         release_year, variant_key, image_url),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def find_product_by_variant_key(conn: sqlite3.Connection, variant_key: str) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM products WHERE variant_key = ? AND status = 'ACTIVE' LIMIT 1",
+        (variant_key,),
+    ).fetchone()
+
+
+def list_active_products(conn: sqlite3.Connection, *, brand: Optional[str] = None,
+                          category: Optional[str] = None) -> list:
+    query = "SELECT * FROM products WHERE status = 'ACTIVE'"
+    params: list = []
+    if brand:
+        query += " AND brand = ?"
+        params.append(brand)
+    elif category:
+        query += " AND category = ?"
+        params.append(category)
+    return conn.execute(query, params).fetchall()
+
+
+def touch_product_seen(conn: sqlite3.Connection, product_id: int) -> None:
+    conn.execute(
+        "UPDATE products SET last_seen_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        (product_id,),
+    )
+    conn.commit()
