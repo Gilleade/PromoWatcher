@@ -22,3 +22,34 @@
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 16px;
 }
+
+.category-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  margin-bottom: 20px;
+  padding-bottom: 4px;
+}
+
+.category-tab {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.category-tab:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.category-tab.active {
+  background: var(--accent-purple-dim);
+  color: var(--accent-purple);
+  border-color: var(--accent-purple);
+}
