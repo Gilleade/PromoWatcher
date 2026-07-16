@@ -325,3 +325,41 @@ def get_promotion_with_raw_text(conn: sqlite3.Connection, promotion_id: int) -> 
         """,
         (promotion_id,),
     ).fetchone()
+
+
+def insert_coupon(conn: sqlite3.Connection, *, raw_message_id: int, dedupe_key: str,
+                   code: Optional[str] = None, discount_label: Optional[str] = None,
+                   description: Optional[str] = None, store_name: Optional[str] = None,
+                   store_domain: Optional[str] = None, url: Optional[str] = None,
+                   source_chat_title: Optional[str] = None) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO coupons_standalone
+            (raw_message_id, code, discount_label, description, store_name,
+             store_domain, url, dedupe_key, source_chat_title)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (raw_message_id, code, discount_label, description, store_name,
+         store_domain, url, dedupe_key, source_chat_title),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def find_coupon_by_dedupe_key(conn: sqlite3.Connection, dedupe_key: str) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM coupons_standalone WHERE dedupe_key = ? AND status = 'ACTIVE' LIMIT 1",
+        (dedupe_key,),
+    ).fetchone()
+
+
+def touch_coupon_seen(conn: sqlite3.Connection, coupon_id: int) -> None:
+    conn.execute(
+        """
+        UPDATE coupons_standalone
+        SET repeat_count = repeat_count + 1, last_seen_at = datetime('now'), updated_at = datetime('now')
+        WHERE id = ?
+        """,
+        (coupon_id,),
+    )
+    conn.commit()

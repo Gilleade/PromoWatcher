@@ -42,3 +42,14 @@ def test_extract_coupon():
 
 def test_extract_coupon_none():
     assert extract_coupon("Sem cupom aqui") is None
+
+
+def test_price_followed_by_off_is_not_a_product_price():
+    # "R$20 OFF" é o valor de um cupom de desconto, não o preço de um item
+    assert extract_prices("Cupom de R$20 OFF válido em todo o site") == []
+    assert extract_price("Cupom de R$20 OFF válido em todo o site") is None
+
+
+def test_price_followed_by_off_does_not_hide_a_real_price_earlier():
+    prices = extract_prices("Notebook por R$ 2.999,00, use o cupom de R$50 OFF")
+    assert prices == [Decimal("2999.00")]

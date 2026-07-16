@@ -14,6 +14,12 @@ _PRICE_REAIS = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*reais", re.IGNORECASE)
 
 _COUPON_RE = re.compile(r"(?i:cupom)\s*[:\-]?\s*([A-Z0-9]{3,20})")
 
+# "R$20 OFF" é um valor de desconto de cupom, não o preço de um produto —
+# um match de preço imediatamente seguido de "OFF" não conta como preço.
+# Sem "^": pattern.match(text, pos) já ancora em pos; "^" checaria o início
+# absoluto da string (posição 0), não pos, e nunca bateria aqui.
+_OFF_SUFFIX_RE = re.compile(r"\s*off\b", re.IGNORECASE)
+
 
 def _to_decimal(raw: str) -> Optional[Decimal]:
     normalized = raw.replace(".", "").replace(",", ".")
@@ -28,6 +34,8 @@ def extract_prices(text: str) -> List[Decimal]:
         return []
     matches = []
     for m in _PRICE_RS.finditer(text):
+        if _OFF_SUFFIX_RE.match(text, m.end()):
+            continue
         matches.append((m.start(), m.group(1)))
     for m in _PRICE_REAIS.finditer(text):
         matches.append((m.start(), m.group(1)))

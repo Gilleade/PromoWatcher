@@ -12,6 +12,7 @@ from app.database import (
     update_promotion_product_match,
 )
 from app.models import AlertDef
+from app.parser.coupon_signal import COUPON, classify_message_kind
 from app.parser.link_resolver import LinkResult, LinkStatus, resolve_links
 from app.parser.text_parser import ParsedMessage, parse_message
 from app.products.matcher import DECISION_NEEDS_REVIEW
@@ -20,6 +21,7 @@ from app.products.spec_extractor import extract_specs
 from app.rules.alert_matcher import MatchResult, match_alerts
 from app.rules.deduplicator import compute_dedupe_key, find_existing_promotion_id
 from app.rules.score import ScoreResult, compute_score
+from app.services.coupon_service import process_coupon_message
 
 NO_MATCH_REASON = "Ignorado: nenhum alerta cadastrado casou com a mensagem."
 
@@ -128,6 +130,7 @@ class ProcessResult:
     product_id: Optional[int] = None
     is_bug_price_candidate: bool = False
     price_deviation_percent: Optional[float] = None
+    coupon_id: Optional[int] = None
 
 
 def _pick_best_match(matches: List[MatchResult], parsed: ParsedMessage,
@@ -180,6 +183,22 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
     )
 
     link_result = resolve_links(parsed.links, timeout=link_resolve_timeout)
+
+    if classify_message_kind(parsed) == COUPON:
+        coupon_result = process_coupon_message(
+            conn, raw_message_id=raw_message_id, parsed=parsed,
+            link_result=link_result, chat_title=chat_title,
+        )
+        return ProcessResult(
+            status=coupon_result.status,
+            raw_message_id=raw_message_id,
+            promotion_id=None,
+            reason="Cupom sem produto associado registrado separadamente."
+            if coupon_result.status == "NEW_COUPON" else "Cupom já registrado anteriormente.",
+            parsed=parsed,
+            link_result=link_result,
+            coupon_id=coupon_result.coupon_id,
+        )
 
     dedupe_key = compute_dedupe_key(link_result, parsed.title_guess, parsed.price)
 
