@@ -1,0 +1,56 @@
+from typing import List, Optional
+
+from pydantic import BaseModel
+
+
+class ProductCard(BaseModel):
+    id: int
+    canonical_title: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+    last_price: Optional[float] = None
+    lowest_price_ever: Optional[float] = None
+    status: str
+
+
+class PriceHistoryPointOut(BaseModel):
+    recorded_at: str
+    price: float
+    is_bug_candidate: bool
+    deviation_percent: Optional[float] = None
+
+
+class ProductDetail(BaseModel):
+    id: int
+    canonical_title: str
+    brand: Optional[str] = None
+    model: Optional[str] = None
+    category: Optional[str] = None
+    storage_gb: Optional[int] = None
+    ram_gb: Optional[int] = None
+    release_year: Optional[int] = None
+    image_url: Optional[str] = None
+    status: str
+    last_price: Optional[float] = None
+    lowest_price_ever: Optional[float] = None
+    lowest_price_ever_at: Optional[str] = None
+    latest_coupon: Optional[str] = None
+    latest_url: Optional[str] = None
+    latest_store_domain: Optional[str] = None
+    latest_link_status: Optional[str] = None
+    listing_status: Optional[str] = None
+    is_favorite: bool = False
+    alert_enabled: bool = False
+    price_history: List[PriceHistoryPointOut] = []
+
+
+class DashboardSummary(BaseModel):
+    products_total: int
+    approved_today: int
+    notified_today: int
+    duplicated_today: int
+    bugs_today: int
+    coupons_active: int
+    pending_review: int
