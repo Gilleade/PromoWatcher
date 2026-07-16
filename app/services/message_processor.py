@@ -1,20 +1,21 @@
 import json
 import sqlite3
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from app.database import (
     insert_match_queue_item,
     insert_occurrence,
     insert_promotion,
     insert_raw_message,
+    update_promotion_price,
     update_promotion_product_match,
 )
 from app.models import AlertDef
 from app.parser.link_resolver import LinkResult, LinkStatus, resolve_links
 from app.parser.text_parser import ParsedMessage, parse_message
 from app.products.matcher import DECISION_NEEDS_REVIEW
-from app.products.product_service import get_or_create_product
+from app.products.product_service import PricePointResult, get_or_create_product, record_price_point
 from app.products.spec_extractor import extract_specs
 from app.rules.alert_matcher import MatchResult, match_alerts
 from app.rules.deduplicator import compute_dedupe_key, find_existing_promotion_id
@@ -23,15 +24,18 @@ from app.rules.score import ScoreResult, compute_score
 NO_MATCH_REASON = "Ignorado: nenhum alerta cadastrado casou com a mensagem."
 
 
-def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int, parsed: ParsedMessage) -> None:
-    """Casa a promoção com um perfil de produto do catálogo. Só roda quando há
-    preço (mensagens sem preço não viram produto). Não tem try/except próprio
-    de propósito: extract_specs() já nunca lança exceção (retorna specs
-    vazias na dúvida), e um erro aqui em diante seria um bug real de SQL —
-    deixa propagar para o [handler] erro: ... do watch_promos.py, igual ao
-    resto do pipeline de alertas."""
+def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
+                             parsed: ParsedMessage, link_result: LinkResult,
+                             chat_title: Optional[str]) -> Tuple[Optional[int], Optional[PricePointResult]]:
+    """Casa a promoção com um perfil de produto do catálogo e registra o
+    primeiro ponto de histórico de preço. Só roda quando há preço (mensagens
+    sem preço não viram produto). Não tem try/except próprio de propósito:
+    extract_specs() já nunca lança exceção (retorna specs vazias na dúvida),
+    e um erro aqui em diante seria um bug real de SQL — deixa propagar para
+    o [handler] erro: ... do watch_promos.py, igual ao resto do pipeline de
+    alertas."""
     if parsed.price is None:
-        return
+        return None, None
 
     specs = extract_specs(parsed.raw_text)
     product_id, decision = get_or_create_product(conn, specs)
@@ -61,6 +65,52 @@ def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int, parsed:
             extracted_specs_json=specs_json,
             candidate_products_json=candidates_json,
         )
+        return None, None
+
+    price_point = record_price_point(
+        conn,
+        product_id=product_id,
+        promotion_id=promotion_id,
+        price=float(parsed.price),
+        old_price=float(parsed.old_price) if parsed.old_price is not None else None,
+        coupon=parsed.coupon,
+        store_domain=link_result.store_domain,
+        source_chat_title=chat_title,
+    )
+    return product_id, price_point
+
+
+def _update_price_if_changed(conn: sqlite3.Connection, existing_promotion, parsed: ParsedMessage,
+                              link_result: LinkResult, chat_title: Optional[str]) -> Optional[PricePointResult]:
+    """Uma promoção "duplicada" (mesmo dedupe_key, normalmente o mesmo link)
+    pode reaparecer com preço diferente — o link não muda, mas a loja alterou
+    o valor. Nesse caso, atualiza o preço da promoção e registra um novo
+    ponto de histórico para o produto (se já estiver associado a um)."""
+    if parsed.price is None:
+        return None
+    new_price = float(parsed.price)
+    if existing_promotion["price"] is not None and new_price == existing_promotion["price"]:
+        return None
+
+    update_promotion_price(
+        conn, promotion_id=existing_promotion["id"], price=new_price,
+        old_price=existing_promotion["price"],
+    )
+
+    product_id = existing_promotion["product_id"]
+    if product_id is None:
+        return None
+
+    return record_price_point(
+        conn,
+        product_id=product_id,
+        promotion_id=existing_promotion["id"],
+        price=new_price,
+        old_price=existing_promotion["price"],
+        coupon=parsed.coupon,
+        store_domain=link_result.store_domain,
+        source_chat_title=chat_title,
+    )
 
 
 @dataclass
@@ -75,6 +125,9 @@ class ProcessResult:
     parsed: Optional[ParsedMessage] = None
     link_result: Optional[LinkResult] = None
     repeat_count: Optional[int] = None
+    product_id: Optional[int] = None
+    is_bug_price_candidate: bool = False
+    price_deviation_percent: Optional[float] = None
 
 
 def _pick_best_match(matches: List[MatchResult], parsed: ParsedMessage,
@@ -132,6 +185,9 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
 
     existing_promotion_id = find_existing_promotion_id(conn, dedupe_key)
     if existing_promotion_id is not None:
+        existing_promotion = conn.execute(
+            "SELECT * FROM promotions WHERE id = ?", (existing_promotion_id,)
+        ).fetchone()
         insert_occurrence(
             conn,
             promotion_id=existing_promotion_id,
@@ -140,6 +196,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             message_date=message_date,
             original_url=parsed.links[0] if parsed.links else None,
         )
+        price_point = _update_price_if_changed(conn, existing_promotion, parsed, link_result, chat_title)
         return ProcessResult(
             status="DUPLICATE",
             raw_message_id=raw_message_id,
@@ -147,6 +204,9 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             reason="Duplicado porque já existe promoção com a mesma chave de deduplicação.",
             parsed=parsed,
             link_result=link_result,
+            product_id=existing_promotion["product_id"],
+            is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
+            price_deviation_percent=price_point.deviation_percent if price_point else None,
         )
 
     matches = match_alerts(parsed.normalized_text, alerts)
@@ -175,7 +235,9 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             status="IGNORED",
             score=None,
         )
-        _apply_product_matching(conn, promotion_id, parsed)
+        matched_product_id, price_point = _apply_product_matching(
+            conn, promotion_id, parsed, link_result, chat_title,
+        )
         return ProcessResult(
             status="NEW_IGNORED",
             raw_message_id=raw_message_id,
@@ -183,6 +245,9 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             reason=reason,
             parsed=parsed,
             link_result=link_result,
+            product_id=matched_product_id,
+            is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
+            price_deviation_percent=price_point.deviation_percent if price_point else None,
         )
 
     promotion_id = insert_promotion(
@@ -206,7 +271,9 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
         score=best_score.score,
         matched_alert_id=best_match.alert.id,
     )
-    _apply_product_matching(conn, promotion_id, parsed)
+    matched_product_id, price_point = _apply_product_matching(
+        conn, promotion_id, parsed, link_result, chat_title,
+    )
 
     return ProcessResult(
         status="NEW_APPROVED",
@@ -218,4 +285,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
         notify=best_match.alert.send_to_telegram,
         parsed=parsed,
         link_result=link_result,
+        product_id=matched_product_id,
+        is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
+        price_deviation_percent=price_point.deviation_percent if price_point else None,
     )

@@ -220,3 +220,67 @@ def insert_match_queue_item(conn: sqlite3.Connection, *, promotion_id: int,
     )
     conn.commit()
     return cur.lastrowid
+
+
+def list_price_history(conn: sqlite3.Connection, product_id: int) -> list:
+    return conn.execute(
+        "SELECT * FROM product_price_history WHERE product_id = ? ORDER BY recorded_at",
+        (product_id,),
+    ).fetchall()
+
+
+def insert_price_history_point(conn: sqlite3.Connection, *, product_id: int, price: float,
+                                promotion_id: Optional[int] = None, old_price: Optional[float] = None,
+                                coupon: Optional[str] = None, store_domain: Optional[str] = None,
+                                source_chat_title: Optional[str] = None,
+                                is_bug_candidate: bool = False,
+                                deviation_percent: Optional[float] = None) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO product_price_history
+            (product_id, promotion_id, price, old_price, coupon, store_domain,
+             source_chat_title, is_bug_candidate, deviation_percent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (product_id, promotion_id, price, old_price, coupon, store_domain,
+         source_chat_title, int(is_bug_candidate), deviation_percent),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_product_price_stats(conn: sqlite3.Connection, product_id: int, price: float) -> None:
+    row = conn.execute(
+        "SELECT lowest_price_ever FROM products WHERE id = ?", (product_id,)
+    ).fetchone()
+    is_new_low = row["lowest_price_ever"] is None or price < row["lowest_price_ever"]
+    if is_new_low:
+        conn.execute(
+            """
+            UPDATE products
+            SET last_price = ?, last_price_at = datetime('now'),
+                lowest_price_ever = ?, lowest_price_ever_at = datetime('now'),
+                updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (price, price, product_id),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE products
+            SET last_price = ?, last_price_at = datetime('now'), updated_at = datetime('now')
+            WHERE id = ?
+            """,
+            (price, product_id),
+        )
+    conn.commit()
+
+
+def update_promotion_price(conn: sqlite3.Connection, *, promotion_id: int, price: float,
+                            old_price: Optional[float] = None) -> None:
+    conn.execute(
+        "UPDATE promotions SET price = ?, old_price = ?, updated_at = datetime('now') WHERE id = ?",
+        (price, old_price, promotion_id),
+    )
+    conn.commit()
