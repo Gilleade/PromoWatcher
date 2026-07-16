@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -9,6 +10,7 @@ from app.database import (
     insert_favorite,
     insert_price_history_point,
     insert_product,
+    insert_product_image,
     insert_product_merge_record,
     list_price_history,
     reassign_price_history_to_product,
@@ -16,6 +18,7 @@ from app.database import (
     set_product_merged,
     touch_product_seen,
     update_match_queue_status,
+    update_product_image_url_if_null,
     update_product_price_stats,
     update_product_status,
     update_promotion_product_match,
@@ -136,6 +139,22 @@ def record_price_point(conn: sqlite3.Connection, *, product_id: int, price: floa
 
     return PricePointResult(
         price_history_id=price_history_id, is_bug_candidate=is_bug, deviation_percent=deviation_percent,
+    )
+
+
+def attach_product_image(conn: sqlite3.Connection, *, product_id: int, local_path: str) -> None:
+    """Registra uma imagem baixada do Telegram para o produto. A primeira
+    imagem vence: só vira a foto principal (products.image_url) se o
+    produto ainda não tiver nenhuma — nunca sobrescreve uma já conhecida,
+    mesmo princípio "nunca apagar dado bom" já usado em
+    update_product_price_stats para o parcelamento. O prefixo /media/ aqui
+    precisa ficar em sincronia com o StaticFiles mount em app/api/main.py."""
+    filename = os.path.basename(local_path)
+    image_url = f"/media/{filename}"
+    became_primary = update_product_image_url_if_null(conn, product_id, image_url)
+    insert_product_image(
+        conn, product_id=product_id, local_path=local_path, image_url=image_url,
+        source="TELEGRAM_MEDIA", is_primary=became_primary,
     )
 
 

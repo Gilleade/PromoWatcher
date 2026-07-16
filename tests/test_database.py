@@ -1,8 +1,11 @@
 from app.database import (
     find_promotion_by_dedupe_key,
     insert_occurrence,
+    insert_product,
+    insert_product_image,
     insert_promotion,
     insert_raw_message,
+    update_product_image_url_if_null,
     upsert_alert,
 )
 
@@ -123,3 +126,40 @@ def test_insert_occurrence_increments_repeat_count(db_conn):
         "SELECT repeat_count FROM promotions WHERE id = ?", (promo_id,)
     ).fetchone()
     assert updated["repeat_count"] == 1
+
+
+def _seed_product(conn):
+    return insert_product(conn, canonical_title="Produto Teste", variant_key="teste|teste|1|1")
+
+
+def test_insert_product_image(db_conn):
+    product_id = _seed_product(db_conn)
+    image_id = insert_product_image(
+        db_conn, product_id=product_id, local_path="data/images/1_2_3.jpg",
+        image_url="/media/1_2_3.jpg", is_primary=True,
+    )
+    row = db_conn.execute("SELECT * FROM product_images WHERE id = ?", (image_id,)).fetchone()
+    assert row["product_id"] == product_id
+    assert row["image_url"] == "/media/1_2_3.jpg"
+    assert row["source"] == "TELEGRAM_MEDIA"
+    assert row["is_primary"] == 1
+
+
+def test_update_product_image_url_if_null_sets_when_empty(db_conn):
+    product_id = _seed_product(db_conn)
+    became_primary = update_product_image_url_if_null(db_conn, product_id, "/media/1_2_3.jpg")
+
+    assert became_primary is True
+    row = db_conn.execute("SELECT image_url FROM products WHERE id = ?", (product_id,)).fetchone()
+    assert row["image_url"] == "/media/1_2_3.jpg"
+
+
+def test_update_product_image_url_if_null_does_not_overwrite(db_conn):
+    product_id = _seed_product(db_conn)
+    update_product_image_url_if_null(db_conn, product_id, "/media/first.jpg")
+
+    became_primary = update_product_image_url_if_null(db_conn, product_id, "/media/second.jpg")
+
+    assert became_primary is False
+    row = db_conn.execute("SELECT image_url FROM products WHERE id = ?", (product_id,)).fetchone()
+    assert row["image_url"] == "/media/first.jpg"

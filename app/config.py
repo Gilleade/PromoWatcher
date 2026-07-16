@@ -23,6 +23,9 @@ class Config:
     db_path: str = os.getenv("DB_PATH", os.path.join("data", "promowatcher.sqlite3"))
     alerts_file: str = os.getenv("ALERTS_FILE", "alerts.json")
 
+    images_dir: str = os.getenv("IMAGES_DIR", os.path.join("data", "images"))
+    media_download_timeout: float = float(os.getenv("MEDIA_DOWNLOAD_TIMEOUT", "15"))
+
     case_insensitive: bool = _bool("CASE_INSENSITIVE", "true")
     accent_insensitive: bool = _bool("ACCENT_INSENSITIVE", "true")
     normalize_spaces_dashes: bool = _bool("NORMALIZE_SPACES_DASHES", "true")

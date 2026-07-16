@@ -16,7 +16,12 @@ from app.parser.coupon_signal import COUPON, classify_message_kind
 from app.parser.link_resolver import LinkResult, LinkStatus, resolve_links
 from app.parser.text_parser import ParsedMessage, parse_message
 from app.products.matcher import DECISION_NEEDS_REVIEW
-from app.products.product_service import PricePointResult, get_or_create_product, record_price_point
+from app.products.product_service import (
+    PricePointResult,
+    attach_product_image,
+    get_or_create_product,
+    record_price_point,
+)
 from app.products.spec_extractor import extract_specs
 from app.rules.alert_matcher import MatchResult, match_alerts
 from app.rules.deduplicator import compute_dedupe_key, find_existing_promotion_id
@@ -28,7 +33,9 @@ NO_MATCH_REASON = "Ignorado: nenhum alerta cadastrado casou com a mensagem."
 
 def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
                              parsed: ParsedMessage, link_result: LinkResult,
-                             chat_title: Optional[str]) -> Tuple[Optional[int], Optional[PricePointResult]]:
+                             chat_title: Optional[str], *,
+                             local_image_path: Optional[str] = None,
+                             ) -> Tuple[Optional[int], Optional[PricePointResult]]:
     """Casa a promoção com um perfil de produto do catálogo e registra o
     primeiro ponto de histórico de preço. Só roda quando há preço (mensagens
     sem preço não viram produto). Não tem try/except próprio de propósito:
@@ -68,6 +75,9 @@ def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
             candidate_products_json=candidates_json,
         )
         return None, None
+
+    if local_image_path is not None:
+        attach_product_image(conn, product_id=product_id, local_path=local_image_path)
 
     price_point = record_price_point(
         conn,
@@ -169,6 +179,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             chat_title: Optional[str], sender_id: Optional[int], message_text: str,
             message_date: str, alerts: List[AlertDef], has_media: bool = False,
             media_type: Optional[str] = None, raw_json: Optional[str] = None,
+            local_image_path: Optional[str] = None,
             accent_insensitive: bool = True, normalize_spaces_dashes: bool = True,
             case_insensitive: bool = True, link_resolve_timeout: float = 5.0) -> ProcessResult:
     raw_message_id = insert_raw_message(
@@ -224,6 +235,10 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             message_date=message_date,
             original_url=parsed.links[0] if parsed.links else None,
         )
+        if existing_promotion["product_id"] is not None and local_image_path is not None:
+            attach_product_image(
+                conn, product_id=existing_promotion["product_id"], local_path=local_image_path,
+            )
         price_point = _update_price_if_changed(conn, existing_promotion, parsed, link_result, chat_title)
         return ProcessResult(
             status="DUPLICATE",
@@ -268,6 +283,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
         )
         matched_product_id, price_point = _apply_product_matching(
             conn, promotion_id, parsed, link_result, chat_title,
+            local_image_path=local_image_path,
         )
         return ProcessResult(
             status="NEW_IGNORED",
@@ -307,6 +323,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
     )
     matched_product_id, price_point = _apply_product_matching(
         conn, promotion_id, parsed, link_result, chat_title,
+        local_image_path=local_image_path,
     )
 
     return ProcessResult(

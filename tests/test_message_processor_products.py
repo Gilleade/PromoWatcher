@@ -126,6 +126,71 @@ def test_installment_info_is_stored_on_promotion_and_product(db_conn):
     assert product["last_installment_price"] == 52.5
 
 
+def test_local_image_path_sets_product_image(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG: Motorola Moto G56 5G 256GB 8GB RAM por R$ 1.093,90",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+            local_image_path="data/images/100_1_999.jpg",
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    product = db_conn.execute(
+        "SELECT * FROM products WHERE id = ?", (row["product_id"],)
+    ).fetchone()
+    assert product["image_url"] == "/media/100_1_999.jpg"
+    image_count = db_conn.execute(
+        "SELECT COUNT(*) FROM product_images WHERE product_id = ?", (row["product_id"],)
+    ).fetchone()[0]
+    assert image_count == 1
+
+
+def test_no_local_image_path_is_a_no_op(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG: Motorola Moto G56 5G 256GB 8GB RAM por R$ 1.093,90",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    product = db_conn.execute(
+        "SELECT image_url FROM products WHERE id = ?", (row["product_id"],)
+    ).fetchone()
+    assert product["image_url"] is None
+
+
+def test_needs_review_with_image_creates_no_product_images_row(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG imperdível por R$ 199,90, corre que acaba!",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+            local_image_path="data/images/100_1_999.jpg",
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    assert row["product_id"] is None
+    count = db_conn.execute("SELECT COUNT(*) FROM product_images").fetchone()[0]
+    assert count == 0
+
+
 def test_message_without_price_skips_product_matching(db_conn):
     with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
         result = process(

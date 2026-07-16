@@ -102,7 +102,8 @@ def reload_alerts_if_needed(conn):
 
 
 def _process_in_worker_thread(telegram_message_id, chat_id, chat_title, sender_id,
-                               text, message_date, alerts):
+                               text, message_date, alerts, has_media=False,
+                               local_image_path=None):
     """Roda o pipeline em uma conexão SQLite própria da worker thread — uma
     Connection do sqlite3 não pode ser compartilhada entre threads."""
     conn = get_connection(config.db_path)
@@ -116,6 +117,8 @@ def _process_in_worker_thread(telegram_message_id, chat_id, chat_title, sender_i
             message_text=text,
             message_date=message_date,
             alerts=alerts,
+            has_media=has_media,
+            local_image_path=local_image_path,
             accent_insensitive=config.accent_insensitive,
             normalize_spaces_dashes=config.normalize_spaces_dashes,
             case_insensitive=config.case_insensitive,
@@ -127,6 +130,31 @@ def _process_in_worker_thread(telegram_message_id, chat_id, chat_title, sender_i
 
 client = create_client(config)
 db_conn = init_db(config.db_path)
+
+
+async def _download_message_photo(m, chat_id: int):
+    """Baixa a foto anexada à mensagem (quando houver) para IMAGES_DIR, com
+    nome determinístico e rastreável à mensagem de origem. Nunca lança:
+    qualquer falha (timeout, sem permissão de escrita, mídia expirada etc.)
+    só loga e retorna None — a promoção segue seu caminho normal sem
+    imagem, mesma filosofia do resolve_links() para links quebrados (nunca
+    descarta a promoção por causa de uma falha auxiliar)."""
+    photo = getattr(m, "photo", None)
+    if photo is None:
+        return None
+    try:
+        os.makedirs(config.images_dir, exist_ok=True)
+        filename = f"{chat_id}_{m.id}_{photo.id}.jpg"
+        path = os.path.join(config.images_dir, filename)
+        if os.path.exists(path):
+            return path
+        return await asyncio.wait_for(
+            client.download_media(m, file=path),
+            timeout=config.media_download_timeout,
+        )
+    except Exception as e:
+        print(f"[media] falha ao baixar foto da msg {m.id}: {type(e).__name__}: {e}")
+        return None
 
 
 @client.on(events.NewMessage(chats=config.telegram_chats if config.telegram_chats else None))
@@ -148,11 +176,14 @@ async def handler(event):
         chat_name = getattr(chat, "title", None) or getattr(chat, "username", None) or str(chat.id)
         message_date = m.date.isoformat() if m.date else datetime.utcnow().isoformat()
 
+        local_image_path = await _download_message_photo(m, chat.id)
+
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(executor, _process_in_worker_thread,
                                              m.id, chat.id, chat_name,
                                              getattr(m, "sender_id", None), text,
-                                             message_date, alerts)
+                                             message_date, alerts, bool(m.media),
+                                             local_image_path)
 
         if result.status != "NEW_APPROVED" or not result.notify:
             print(f"[pipeline] {result.status} de {chat_name}: {result.reason}")

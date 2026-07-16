@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -5,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routers import admin, alerts, coupons, dashboard, favorites, feed, products
+from app.config import get_config
 
 app = FastAPI(title="PromoWatcher API", version="0.1.0")
 
@@ -29,6 +31,14 @@ app.include_router(alerts.router, prefix="/api/v1")
 @app.get("/api/v1/health")
 def health():
     return {"status": "ok"}
+
+
+# Fotos baixadas do Telegram para os produtos (ver
+# app/products/product_service.py attach_product_image — o prefixo /media/
+# construído lá precisa casar com este mount).
+_config = get_config()
+os.makedirs(_config.images_dir, exist_ok=True)
+app.mount("/media", StaticFiles(directory=_config.images_dir), name="media")
 
 
 # Build de produção do frontend (Vite) — serve o app estático quando existir.

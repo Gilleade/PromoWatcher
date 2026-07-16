@@ -65,6 +65,12 @@ export function ProductProfilePage() {
 
   return (
     <div className="page product-profile">
+      {product.image_url && (
+        <div className="product-profile-image">
+          <img src={product.image_url} alt={product.canonical_title} loading="lazy" />
+        </div>
+      )}
+
       <div className="product-profile-header">
         <div>
           {product.brand && <span className="brand-tag">{product.brand}</span>}

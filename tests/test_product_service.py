@@ -1,5 +1,6 @@
+from app.database import insert_product
 from app.products.matcher import DECISION_AUTO_MATCH, DECISION_AUTO_NEW, DECISION_NEEDS_REVIEW
-from app.products.product_service import get_or_create_product
+from app.products.product_service import attach_product_image, get_or_create_product
 from app.products.spec_extractor import extract_specs
 
 
@@ -74,3 +75,31 @@ def test_repeated_match_updates_last_seen_at(db_conn):
         "SELECT last_seen_at FROM products WHERE id = ?", (product_id,)
     ).fetchone()["last_seen_at"]
     assert updated_last_seen >= original_last_seen
+
+
+def test_attach_product_image_sets_image_url_and_inserts_row(db_conn):
+    product_id = insert_product(db_conn, canonical_title="Produto Teste", variant_key="t|t|1|1")
+
+    attach_product_image(db_conn, product_id=product_id, local_path="data/images/1_2_3.jpg")
+
+    product = db_conn.execute("SELECT image_url FROM products WHERE id = ?", (product_id,)).fetchone()
+    assert product["image_url"] == "/media/1_2_3.jpg"
+    image = db_conn.execute(
+        "SELECT * FROM product_images WHERE product_id = ?", (product_id,)
+    ).fetchone()
+    assert image["local_path"] == "data/images/1_2_3.jpg"
+    assert image["is_primary"] == 1
+
+
+def test_attach_product_image_second_call_does_not_replace_primary(db_conn):
+    product_id = insert_product(db_conn, canonical_title="Produto Teste", variant_key="t|t|1|1")
+    attach_product_image(db_conn, product_id=product_id, local_path="data/images/1_2_3.jpg")
+
+    attach_product_image(db_conn, product_id=product_id, local_path="data/images/4_5_6.jpg")
+
+    product = db_conn.execute("SELECT image_url FROM products WHERE id = ?", (product_id,)).fetchone()
+    assert product["image_url"] == "/media/1_2_3.jpg"
+    count = db_conn.execute(
+        "SELECT COUNT(*) FROM product_images WHERE product_id = ?", (product_id,)
+    ).fetchone()[0]
+    assert count == 2

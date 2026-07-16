@@ -296,6 +296,35 @@ def update_product_price_stats(conn: sqlite3.Connection, product_id: int, price:
     conn.commit()
 
 
+def insert_product_image(conn: sqlite3.Connection, *, product_id: int,
+                          local_path: Optional[str] = None, image_url: Optional[str] = None,
+                          source: str = "TELEGRAM_MEDIA", is_primary: bool = False) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO product_images (product_id, image_url, local_path, source, is_primary)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (product_id, image_url, local_path, source, int(is_primary)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_product_image_url_if_null(conn: sqlite3.Connection, product_id: int, image_url: str) -> bool:
+    """Só grava products.image_url se ainda estiver NULL — nunca sobrescreve
+    uma imagem já conhecida por causa de um reenvio/edição posterior sem
+    foto (ou com foto diferente). Retorna True quando esta chamada foi quem
+    definiu o valor (usado para marcar a linha em product_images como
+    is_primary)."""
+    cur = conn.execute(
+        "UPDATE products SET image_url = ?, updated_at = datetime('now') "
+        "WHERE id = ? AND image_url IS NULL",
+        (image_url, product_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
 def update_promotion_price(conn: sqlite3.Connection, *, promotion_id: int, price: float,
                             old_price: Optional[float] = None,
                             installment_count: Optional[int] = None,
