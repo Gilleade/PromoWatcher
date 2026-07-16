@@ -53,3 +53,23 @@ def test_price_followed_by_off_is_not_a_product_price():
 def test_price_followed_by_off_does_not_hide_a_real_price_earlier():
     prices = extract_prices("Notebook por R$ 2.999,00, use o cupom de R$50 OFF")
     assert prices == [Decimal("2999.00")]
+
+
+def test_installment_value_is_not_a_product_price():
+    # "8x de R$ 52,50" é o valor da parcela, não o preço à vista — bug real
+    # observado em produção: essa mensagem gravou R$52,50 como preço final
+    # em vez de R$420,00 (o "POR R$ ...").
+    text = (
+        "Monitor AOC 22\" 120Hz 1ms\n\n"
+        "DE R$ 499,00\n"
+        "POR R$ 420,00\n"
+        "Em até 8x de R$ 52,50 sem juros"
+    )
+    old_price, price = extract_price_range(text)
+    assert old_price == Decimal("499.00")
+    assert price == Decimal("420.00")
+
+
+def test_installment_value_excluded_without_de():
+    prices = extract_prices("Só R$ 100,00 ou 10x R$ 10,00")
+    assert prices == [Decimal("100.00")]

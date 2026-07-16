@@ -20,6 +20,15 @@ _COUPON_RE = re.compile(r"(?i:cupom)\s*[:\-]?\s*([A-Z0-9]{3,20})")
 # absoluto da string (posição 0), não pos, e nunca bateria aqui.
 _OFF_SUFFIX_RE = re.compile(r"\s*off\b", re.IGNORECASE)
 
+# "Em até 8x de R$ 52,50 sem juros" é o valor da PARCELA do parcelamento,
+# não o preço à vista — um preço imediatamente precedido por um contador
+# de parcelas ("8x", "8x de") não conta como preço do produto. Sem essa
+# exclusão, "8x de R$52,50" vira o último preço do texto e sobrescreve o
+# preço "por R$ ..." real (bug real observado em produção: uma promoção
+# de monitor com "DE R$499 / POR R$420 / 8x de R$52,50" gravou R$52,50
+# como preço final).
+_INSTALLMENT_PREFIX_RE = re.compile(r"\d+\s*x\s*(?:de\s*)?$", re.IGNORECASE)
+
 
 def _to_decimal(raw: str) -> Optional[Decimal]:
     normalized = raw.replace(".", "").replace(",", ".")
@@ -36,8 +45,12 @@ def extract_prices(text: str) -> List[Decimal]:
     for m in _PRICE_RS.finditer(text):
         if _OFF_SUFFIX_RE.match(text, m.end()):
             continue
+        if _INSTALLMENT_PREFIX_RE.search(text, 0, m.start()):
+            continue
         matches.append((m.start(), m.group(1)))
     for m in _PRICE_REAIS.finditer(text):
+        if _INSTALLMENT_PREFIX_RE.search(text, 0, m.start()):
+            continue
         matches.append((m.start(), m.group(1)))
     matches.sort(key=lambda x: x[0])
 
