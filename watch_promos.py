@@ -10,6 +10,7 @@ from telethon import events
 
 from app.config import get_config
 from app.database import get_connection, init_db, insert_notification
+from app.products.enrichment_worker import enrichment_worker_loop
 from app.rules.alert_matcher import load_alerts, sync_alerts_to_db
 from app.services.message_processor import process
 from app.services.notification_service import build_notification_text
@@ -237,6 +238,9 @@ def main():
     reload_alerts_if_needed(db_conn)
     client.start()  # login/2FA na primeira vez
     client.loop.run_until_complete(resolve_notify_dest())
+    client.loop.create_task(
+        enrichment_worker_loop(lambda: get_connection(config.db_path), config)
+    )
     client.run_until_disconnected()
 
 

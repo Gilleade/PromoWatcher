@@ -284,3 +284,44 @@ def update_promotion_price(conn: sqlite3.Connection, *, promotion_id: int, price
         (price, old_price, promotion_id),
     )
     conn.commit()
+
+
+def get_next_pending_match_queue_item(conn: sqlite3.Connection) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        "SELECT * FROM product_match_queue WHERE status = 'PENDING' ORDER BY created_at LIMIT 1"
+    ).fetchone()
+
+
+def update_match_queue_status(conn: sqlite3.Connection, item_id: int, *, status: str,
+                               attempts: int, result_json: Optional[str] = None,
+                               error_message: Optional[str] = None) -> None:
+    conn.execute(
+        """
+        UPDATE product_match_queue
+        SET status = ?, attempts = ?, result_json = ?, error_message = ?, processed_at = datetime('now')
+        WHERE id = ?
+        """,
+        (status, attempts, result_json, error_message, item_id),
+    )
+    conn.commit()
+
+
+def fetch_products_by_ids(conn: sqlite3.Connection, product_ids: list) -> list:
+    if not product_ids:
+        return []
+    placeholders = ",".join("?" * len(product_ids))
+    return conn.execute(
+        f"SELECT * FROM products WHERE id IN ({placeholders})", product_ids
+    ).fetchall()
+
+
+def get_promotion_with_raw_text(conn: sqlite3.Connection, promotion_id: int) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT p.*, rm.message_text AS raw_message_text
+        FROM promotions p
+        JOIN raw_messages rm ON rm.id = p.raw_message_id
+        WHERE p.id = ?
+        """,
+        (promotion_id,),
+    ).fetchone()
