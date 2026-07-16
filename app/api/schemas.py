@@ -133,3 +133,21 @@ class CouponOut(BaseModel):
     repeat_count: int
     first_seen_at: str
     last_seen_at: str
+
+
+class AlertIn(BaseModel):
+    name: str
+    enabled: bool = True
+    alert_type: str = "PRODUCT_RULE"
+    required: List[str] = []
+    any: List[str] = []
+    exclude: List[str] = []
+    max_price: Optional[float] = None
+    min_discount_percent: Optional[float] = None
+    bug_mode: bool = False
+    min_score: int = 0
+    send_to_telegram: bool = True
+
+
+class AlertOut(AlertIn):
+    id: Optional[int] = None
