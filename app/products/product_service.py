@@ -22,7 +22,7 @@ from app.database import (
     upsert_product_alert,
 )
 from app.products.matcher import DECISION_AUTO_MATCH, DECISION_AUTO_NEW, MatchDecision, match_product
-from app.products.spec_extractor import ExtractedSpecs, build_variant_key
+from app.products.spec_extractor import CATEGORY_TITLE_PREFIX, ExtractedSpecs, build_variant_key
 
 # Mínimo de pontos de histórico antes de a detecção de bug por desvio entrar
 # em ação — sem isso, os primeiros preços de um produto novo (sem "média"
@@ -33,6 +33,8 @@ BUG_DEVIATION_PERCENT_THRESHOLD = 40.0
 
 def _build_canonical_title(specs: ExtractedSpecs) -> str:
     parts = []
+    if specs.category and specs.category in CATEGORY_TITLE_PREFIX:
+        parts.append(CATEGORY_TITLE_PREFIX[specs.category])
     if specs.brand:
         parts.append(specs.brand.title())
     if specs.model:

@@ -15,6 +15,17 @@ def test_get_or_create_creates_new_product_first_time(db_conn):
     assert row["storage_gb"] == 256
 
 
+def test_canonical_title_starts_with_category_prefix(db_conn):
+    # bug real: título ficava só "Asus Tuf A15 Fa506Ncg Hn216 512GB 8GB RAM",
+    # sem deixar claro que é um notebook.
+    specs = extract_specs("Notebook Asus Tuf A15 FA506NCG HN216 512GB 8GB RAM por R$ 4.094,00")
+
+    product_id, _ = get_or_create_product(db_conn, specs)
+
+    row = db_conn.execute("SELECT canonical_title FROM products WHERE id = ?", (product_id,)).fetchone()
+    assert row["canonical_title"].startswith("Notebook ")
+
+
 def test_second_post_of_same_product_reuses_id(db_conn):
     specs_a = extract_specs("Motorola Moto G56 5G 256GB 8GB RAM por R$ 1.093,90 no Magalu")
     product_id_a, decision_a = get_or_create_product(db_conn, specs_a)

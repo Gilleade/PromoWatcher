@@ -34,7 +34,27 @@ BRAND_ALIASES = {
     "aoc": ["aoc"],
     "gamesir": ["gamesir"],
     "microsoft": ["xbox"],
-    "nintendo": ["nintendo", "switch"],
+    # "switch" sozinho é gatilho demais (switch mecânico de teclado, switch de
+    # rede etc.) — já causou um produto real virar "Nintendo" a partir de um
+    # teclado gamer com "Cherry MX Red Switch Hot-Swappable" no texto. Exige
+    # a frase completa "nintendo switch".
+    "nintendo": ["nintendo"],
+}
+
+# Prefixo de tipo de produto adicionado no início do canonical_title (ex.:
+# "Notebook Asus Tuf A15 ..." em vez de só "Asus Tuf A15 ...") — sem isso o
+# título não deixa claro o que é o produto quando a marca/modelo não é
+# autoexplicativa.
+CATEGORY_TITLE_PREFIX = {
+    "smartphone": "Celular",
+    "notebook": "Notebook",
+    "console": "Console",
+    "tv": "TV",
+    "fone": "Fone de Ouvido",
+    "monitor": "Monitor",
+    "teclado": "Teclado",
+    "mouse": "Mouse",
+    "controle": "Controle",
 }
 
 CATEGORY_KEYWORDS = {

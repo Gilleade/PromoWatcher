@@ -106,3 +106,16 @@ def test_console_brand_alias_ps5():
     specs = extract_specs("PS5 Slim Digital + Gran Turismo 7 por R$3.629,99")
     assert specs.brand == "sony"
     assert specs.category == "console"
+
+
+def test_mechanical_keyboard_switch_does_not_false_positive_as_nintendo():
+    # bug real: "Cherry MX Red Switch Hot-Swappable" fazia o extrator marcar
+    # a marca como "nintendo" (gatilho "switch" sozinho, sem "nintendo" no
+    # texto) — um teclado gamer virava um "produto Nintendo" no catálogo.
+    text = (
+        "Teclado Mecânico Gamer AGON AGK600 Cherry MX Red Switch "
+        "Hot-Swappable US RGB 360° com design 60% ultracompacto"
+    )
+    specs = extract_specs(text)
+    assert specs.brand is None
+    assert specs.category == "teclado"
