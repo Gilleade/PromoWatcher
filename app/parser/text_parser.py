@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from app.parser.link_extractor import extract_links
 from app.parser.normalizer import normalize_text
-from app.parser.price_parser import extract_coupon, extract_price_range
+from app.parser.price_parser import extract_coupon, extract_installment, extract_price_range
 
 
 @dataclass
@@ -17,6 +17,9 @@ class ParsedMessage:
     discount_percent: Optional[Decimal]
     coupon: Optional[str]
     links: List[str]
+    installment_count: Optional[int] = None
+    installment_price: Optional[Decimal] = None
+    installment_no_interest: Optional[bool] = None
 
 
 def guess_title(text: str) -> Optional[str]:
@@ -40,6 +43,7 @@ def parse_message(text: str, *, accent_insensitive: bool = True,
                    normalize_spaces_dashes: bool = True, case_insensitive: bool = True) -> ParsedMessage:
     text = text or ""
     old_price, price = extract_price_range(text)
+    installment = extract_installment(text)
     return ParsedMessage(
         raw_text=text,
         normalized_text=normalize_text(
@@ -54,4 +58,7 @@ def parse_message(text: str, *, accent_insensitive: bool = True,
         discount_percent=compute_discount_percent(old_price, price),
         coupon=extract_coupon(text),
         links=extract_links(text),
+        installment_count=installment[0] if installment else None,
+        installment_price=installment[1] if installment else None,
+        installment_no_interest=installment[2] if installment else None,
     )

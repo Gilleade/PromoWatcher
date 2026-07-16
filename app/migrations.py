@@ -16,6 +16,14 @@ MIGRATIONS: List[Migration] = [
     ("0002_notifications_product_alert_column", """
         ALTER TABLE notifications ADD COLUMN product_alert_id INTEGER REFERENCES product_alerts (id);
     """),
+    ("0003_installment_columns", """
+        ALTER TABLE promotions ADD COLUMN installment_count INTEGER;
+        ALTER TABLE promotions ADD COLUMN installment_price REAL;
+        ALTER TABLE promotions ADD COLUMN installment_no_interest INTEGER;
+        ALTER TABLE products ADD COLUMN last_installment_count INTEGER;
+        ALTER TABLE products ADD COLUMN last_installment_price REAL;
+        ALTER TABLE products ADD COLUMN last_installment_no_interest INTEGER;
+    """),
 ]
 
 _TRACKING_TABLE_SQL = """

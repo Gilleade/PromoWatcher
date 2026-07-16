@@ -107,7 +107,10 @@ class PricePointResult:
 def record_price_point(conn: sqlite3.Connection, *, product_id: int, price: float,
                         promotion_id: Optional[int] = None, old_price: Optional[float] = None,
                         coupon: Optional[str] = None, store_domain: Optional[str] = None,
-                        source_chat_title: Optional[str] = None) -> PricePointResult:
+                        source_chat_title: Optional[str] = None,
+                        installment_count: Optional[int] = None,
+                        installment_price: Optional[float] = None,
+                        installment_no_interest: Optional[bool] = None) -> PricePointResult:
     is_bug, deviation_percent = evaluate_bug_by_deviation(conn, product_id, price)
 
     price_history_id = insert_price_history_point(
@@ -122,7 +125,12 @@ def record_price_point(conn: sqlite3.Connection, *, product_id: int, price: floa
         is_bug_candidate=is_bug,
         deviation_percent=deviation_percent,
     )
-    update_product_price_stats(conn, product_id, price)
+    update_product_price_stats(
+        conn, product_id, price,
+        installment_count=installment_count,
+        installment_price=installment_price,
+        installment_no_interest=installment_no_interest,
+    )
 
     return PricePointResult(
         price_history_id=price_history_id, is_bug_candidate=is_bug, deviation_percent=deviation_percent,

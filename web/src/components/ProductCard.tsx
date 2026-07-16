@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { ProductCard as ProductCardType } from '../api/types'
-import { formatPrice } from '../utils/format'
+import { formatInstallment, formatPrice } from '../utils/format'
 import './ProductCard.css'
 
 export function ProductCard({ product }: { product: ProductCardType }) {
@@ -8,6 +8,12 @@ export function ProductCard({ product }: { product: ProductCardType }) {
     product.last_price !== null &&
     product.lowest_price_ever !== null &&
     product.last_price <= product.lowest_price_ever
+
+  const installment = formatInstallment(
+    product.last_installment_count,
+    product.last_installment_price,
+    product.last_installment_no_interest,
+  )
 
   return (
     <Link to={`/produtos/${product.id}`} className="product-card">
@@ -27,6 +33,7 @@ export function ProductCard({ product }: { product: ProductCardType }) {
           <span className="price">{formatPrice(product.last_price)}</span>
           {isLowestEver && <span className="badge badge-green">menor preço</span>}
         </div>
+        {installment && <span className="installment-price">{installment}</span>}
       </div>
     </Link>
   )

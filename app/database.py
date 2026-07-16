@@ -48,6 +48,7 @@ def insert_raw_message(conn: sqlite3.Connection, *, telegram_message_id: int, ch
 
 def insert_promotion(conn: sqlite3.Connection, *, raw_message_id: int, title_guess=None,
                       price=None, old_price=None, discount_percent=None, coupon=None,
+                      installment_count=None, installment_price=None, installment_no_interest=None,
                       source_chat_title=None, original_links=None, selected_original_url=None,
                       resolved_url=None, clean_url=None, link_status=None, store_domain=None,
                       dedupe_key=None, status=None, score=None, matched_alert_id=None) -> int:
@@ -55,11 +56,14 @@ def insert_promotion(conn: sqlite3.Connection, *, raw_message_id: int, title_gue
         """
         INSERT INTO promotions
             (raw_message_id, title_guess, price, old_price, discount_percent, coupon,
+             installment_count, installment_price, installment_no_interest,
              source_chat_title, original_links, selected_original_url, resolved_url,
              clean_url, link_status, store_domain, dedupe_key, status, score, matched_alert_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (raw_message_id, title_guess, price, old_price, discount_percent, coupon,
+         installment_count, installment_price,
+         None if installment_no_interest is None else int(installment_no_interest),
          source_chat_title, original_links, selected_original_url, resolved_url,
          clean_url, link_status, store_domain, dedupe_key, status, score, matched_alert_id),
     )
@@ -249,39 +253,63 @@ def insert_price_history_point(conn: sqlite3.Connection, *, product_id: int, pri
     return cur.lastrowid
 
 
-def update_product_price_stats(conn: sqlite3.Connection, product_id: int, price: float) -> None:
+def update_product_price_stats(conn: sqlite3.Connection, product_id: int, price: float, *,
+                                installment_count: Optional[int] = None,
+                                installment_price: Optional[float] = None,
+                                installment_no_interest: Optional[bool] = None) -> None:
     row = conn.execute(
         "SELECT lowest_price_ever FROM products WHERE id = ?", (product_id,)
     ).fetchone()
     is_new_low = row["lowest_price_ever"] is None or price < row["lowest_price_ever"]
+    # COALESCE nas 3 colunas de parcelamento: quando a mensagem atual não
+    # trouxer parcelamento, mantém o último conhecido em vez de apagar —
+    # mensagens repostadas nem sempre repetem a linha "Nx de R$Y".
+    installment_no_interest_int = None if installment_no_interest is None else int(installment_no_interest)
     if is_new_low:
         conn.execute(
             """
             UPDATE products
             SET last_price = ?, last_price_at = datetime('now'),
                 lowest_price_ever = ?, lowest_price_ever_at = datetime('now'),
+                last_installment_count = COALESCE(?, last_installment_count),
+                last_installment_price = COALESCE(?, last_installment_price),
+                last_installment_no_interest = COALESCE(?, last_installment_no_interest),
                 updated_at = datetime('now')
             WHERE id = ?
             """,
-            (price, price, product_id),
+            (price, price, installment_count, installment_price,
+             installment_no_interest_int, product_id),
         )
     else:
         conn.execute(
             """
             UPDATE products
-            SET last_price = ?, last_price_at = datetime('now'), updated_at = datetime('now')
+            SET last_price = ?, last_price_at = datetime('now'),
+                last_installment_count = COALESCE(?, last_installment_count),
+                last_installment_price = COALESCE(?, last_installment_price),
+                last_installment_no_interest = COALESCE(?, last_installment_no_interest),
+                updated_at = datetime('now')
             WHERE id = ?
             """,
-            (price, product_id),
+            (price, installment_count, installment_price, installment_no_interest_int, product_id),
         )
     conn.commit()
 
 
 def update_promotion_price(conn: sqlite3.Connection, *, promotion_id: int, price: float,
-                            old_price: Optional[float] = None) -> None:
+                            old_price: Optional[float] = None,
+                            installment_count: Optional[int] = None,
+                            installment_price: Optional[float] = None,
+                            installment_no_interest: Optional[bool] = None) -> None:
     conn.execute(
-        "UPDATE promotions SET price = ?, old_price = ?, updated_at = datetime('now') WHERE id = ?",
-        (price, old_price, promotion_id),
+        """
+        UPDATE promotions
+        SET price = ?, old_price = ?, installment_count = ?, installment_price = ?,
+            installment_no_interest = ?, updated_at = datetime('now')
+        WHERE id = ?
+        """,
+        (price, old_price, installment_count, installment_price,
+         None if installment_no_interest is None else int(installment_no_interest), promotion_id),
     )
     conn.commit()
 

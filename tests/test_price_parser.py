@@ -1,6 +1,12 @@
 from decimal import Decimal
 
-from app.parser.price_parser import extract_coupon, extract_price, extract_price_range, extract_prices
+from app.parser.price_parser import (
+    extract_coupon,
+    extract_installment,
+    extract_price,
+    extract_price_range,
+    extract_prices,
+)
 
 
 def test_extract_price_simple_rs_format():
@@ -73,3 +79,31 @@ def test_installment_value_is_not_a_product_price():
 def test_installment_value_excluded_without_de():
     prices = extract_prices("Só R$ 100,00 ou 10x R$ 10,00")
     assert prices == [Decimal("100.00")]
+
+
+def test_extract_installment_with_de_and_no_interest():
+    count, unit_price, no_interest = extract_installment(
+        "Em até 8x de R$ 52,50 sem juros"
+    )
+    assert count == 8
+    assert unit_price == Decimal("52.50")
+    assert no_interest is True
+
+
+def test_extract_installment_without_de():
+    count, unit_price, no_interest = extract_installment("Só R$ 100,00 ou 10x R$ 10,00")
+    assert count == 10
+    assert unit_price == Decimal("10.00")
+    assert no_interest is None
+
+
+def test_extract_installment_no_interest_mention_is_none_not_false():
+    count, unit_price, no_interest = extract_installment("Parcele em até 12x de R$ 100,00")
+    assert count == 12
+    assert unit_price == Decimal("100.00")
+    assert no_interest is None
+
+
+def test_extract_installment_returns_none_without_installment_text():
+    assert extract_installment("Só R$ 100,00 à vista") is None
+    assert extract_installment("") is None

@@ -6,7 +6,9 @@ from app.models import AlertDef
 def build_notification_text(*, alert: AlertDef, title_guess: Optional[str], price: Optional[float],
                              coupon: Optional[str], link_status: str, url: Optional[str],
                              source_chat_title: Optional[str], score: int, repeat_count: int,
-                             reason: str) -> str:
+                             reason: str, installment_count: Optional[int] = None,
+                             installment_price: Optional[float] = None,
+                             installment_no_interest: Optional[bool] = None) -> str:
     lines = ["🚨 PromoWatcher", f"Alerta: {alert.name}", f"Score: {score}"]
     if source_chat_title:
         lines.append(f"Origem: {source_chat_title}")
@@ -20,6 +22,10 @@ def build_notification_text(*, alert: AlertDef, title_guess: Optional[str], pric
 
     if price is not None:
         lines.append(f"Preço: R$ {price:,.2f}".replace(",", "@").replace(".", ",").replace("@", "."))
+    if installment_count and installment_price is not None:
+        parcela = f"R$ {installment_price:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
+        juros = " sem juros" if installment_no_interest else ""
+        lines.append(f"Parcelado: {installment_count}x de {parcela}{juros}")
     if coupon:
         lines.append(f"Cupom: {coupon}")
     lines.append(f"Status do link: {link_status}")

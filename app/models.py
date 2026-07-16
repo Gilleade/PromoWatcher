@@ -25,6 +25,9 @@ class Promotion:
     old_price: Optional[float] = None
     discount_percent: Optional[float] = None
     coupon: Optional[str] = None
+    installment_count: Optional[int] = None
+    installment_price: Optional[float] = None
+    installment_no_interest: Optional[bool] = None
     source_chat_title: Optional[str] = None
     original_links: Optional[str] = None
     selected_original_url: Optional[str] = None
@@ -100,6 +103,9 @@ class Product:
     lowest_price_ever_at: Optional[str] = None
     last_price: Optional[float] = None
     last_price_at: Optional[str] = None
+    last_installment_count: Optional[int] = None
+    last_installment_price: Optional[float] = None
+    last_installment_no_interest: Optional[bool] = None
     id: Optional[int] = None
 
 

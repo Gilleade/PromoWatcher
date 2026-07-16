@@ -12,6 +12,9 @@ class ProductCard(BaseModel):
     image_url: Optional[str] = None
     last_price: Optional[float] = None
     lowest_price_ever: Optional[float] = None
+    last_installment_count: Optional[int] = None
+    last_installment_price: Optional[float] = None
+    last_installment_no_interest: Optional[bool] = None
     status: str
 
 
@@ -36,6 +39,9 @@ class ProductDetail(BaseModel):
     last_price: Optional[float] = None
     lowest_price_ever: Optional[float] = None
     lowest_price_ever_at: Optional[str] = None
+    last_installment_count: Optional[int] = None
+    last_installment_price: Optional[float] = None
+    last_installment_no_interest: Optional[bool] = None
     latest_coupon: Optional[str] = None
     latest_url: Optional[str] = None
     latest_store_domain: Optional[str] = None

@@ -8,7 +8,8 @@ from app.database import (
 
 
 def _seed_product_with_promotion(conn, *, canonical_title="Motorola Moto G56 5G 256GB",
-                                  brand="motorola", price=1093.90):
+                                  brand="motorola", price=1093.90, installment_count=None,
+                                  installment_price=None, installment_no_interest=None):
     product_id = insert_product(
         conn, canonical_title=canonical_title, variant_key=f"{brand}|g56|256|8",
         brand=brand, model="moto g56 5g", storage_gb=256, ram_gb=8, category="smartphone",
@@ -27,6 +28,14 @@ def _seed_product_with_promotion(conn, *, canonical_title="Motorola Moto G56 5G 
         match_status="AUTO_NEW", confidence=1.0,
     )
     insert_price_history_point(conn, product_id=product_id, promotion_id=promotion_id, price=price)
+    if installment_count is not None:
+        conn.execute(
+            "UPDATE products SET last_installment_count = ?, last_installment_price = ?, "
+            "last_installment_no_interest = ? WHERE id = ?",
+            (installment_count, installment_price,
+             None if installment_no_interest is None else int(installment_no_interest), product_id),
+        )
+        conn.commit()
     return product_id, promotion_id
 
 
@@ -47,6 +56,32 @@ def test_feed_returns_seeded_products(api_client):
     assert len(data) == 1
     assert data[0]["canonical_title"] == "Motorola Moto G56 5G 256GB"
     assert data[0]["brand"] == "motorola"
+
+
+def test_feed_includes_installment_fields(api_client):
+    client, conn = api_client
+    _seed_product_with_promotion(
+        conn, installment_count=8, installment_price=52.50, installment_no_interest=True,
+    )
+
+    response = client.get("/api/v1/feed")
+    data = response.json()
+    assert data[0]["last_installment_count"] == 8
+    assert data[0]["last_installment_price"] == 52.50
+    assert data[0]["last_installment_no_interest"] is True
+
+
+def test_get_product_detail_includes_installment_fields(api_client):
+    client, conn = api_client
+    product_id, _ = _seed_product_with_promotion(
+        conn, installment_count=8, installment_price=52.50, installment_no_interest=True,
+    )
+
+    response = client.get(f"/api/v1/products/{product_id}")
+    data = response.json()
+    assert data["last_installment_count"] == 8
+    assert data["last_installment_price"] == 52.50
+    assert data["last_installment_no_interest"] is True
 
 
 def test_feed_filters_by_category(api_client):

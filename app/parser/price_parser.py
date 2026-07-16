@@ -29,6 +29,20 @@ _OFF_SUFFIX_RE = re.compile(r"\s*off\b", re.IGNORECASE)
 # como preço final).
 _INSTALLMENT_PREFIX_RE = re.compile(r"\d+\s*x\s*(?:de\s*)?$", re.IGNORECASE)
 
+# Captura o parcelamento em si (contador de parcelas + valor da parcela),
+# para exibir ao lado do preço à vista — o inverso de _INSTALLMENT_PREFIX_RE,
+# que só serve para EXCLUIR esse valor da extração de preço à vista.
+_INSTALLMENT_RE = re.compile(
+    r"(\d{1,2})\s*x\s*(?:de\s*)?R\$\s*("
+    r"\d{1,3}(?:\.\d{3})+,\d{2}"
+    r"|\d+,\d{2}"
+    r"|\d{1,3}(?:\.\d{3})+"
+    r"|\d+"
+    r")",
+    re.IGNORECASE,
+)
+_NO_INTEREST_RE = re.compile(r"sem\s+juros", re.IGNORECASE)
+
 
 def _to_decimal(raw: str) -> Optional[Decimal]:
     normalized = raw.replace(".", "").replace(",", ".")
@@ -83,3 +97,21 @@ def extract_coupon(text: str) -> Optional[str]:
         return None
     m = _COUPON_RE.search(text)
     return m.group(1) if m else None
+
+
+def extract_installment(text: str) -> Optional[Tuple[int, Decimal, Optional[bool]]]:
+    """Extrai o parcelamento ("Nx de R$Y") do texto, se houver — o primeiro
+    trecho encontrado. Retorna (quantidade, valor_da_parcela, sem_juros).
+    `sem_juros` é True quando "sem juros" aparece logo após o valor, e None
+    quando a mensagem não menciona (ausência não significa que tem juros,
+    só que a mensagem não disse)."""
+    if not text:
+        return None
+    m = _INSTALLMENT_RE.search(text)
+    if not m:
+        return None
+    unit_price = _to_decimal(m.group(2))
+    if unit_price is None:
+        return None
+    no_interest = True if _NO_INTEREST_RE.search(text, m.end(), m.end() + 30) else None
+    return int(m.group(1)), unit_price, no_interest

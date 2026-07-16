@@ -71,3 +71,31 @@ def test_record_price_point_updates_product_last_and_lowest_price(db_conn):
 
 def test_min_history_constant_matches_plan():
     assert MIN_HISTORY_POINTS_FOR_BUG_DETECTION == 5
+
+
+def test_record_price_point_stores_installment_on_product(db_conn):
+    product_id = _seed_product(db_conn)
+    record_price_point(
+        db_conn, product_id=product_id, price=420.0,
+        installment_count=8, installment_price=52.5, installment_no_interest=True,
+    )
+
+    product = db_conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    assert product["last_installment_count"] == 8
+    assert product["last_installment_price"] == 52.5
+    assert product["last_installment_no_interest"] == 1
+
+
+def test_record_price_point_without_installment_keeps_last_known(db_conn):
+    product_id = _seed_product(db_conn)
+    record_price_point(
+        db_conn, product_id=product_id, price=420.0,
+        installment_count=8, installment_price=52.5, installment_no_interest=True,
+    )
+    # reposte sem a linha de parcelamento (mensagem não repetiu "Nx de R$Y")
+    record_price_point(db_conn, product_id=product_id, price=410.0)
+
+    product = db_conn.execute("SELECT * FROM products WHERE id = ?", (product_id,)).fetchone()
+    assert product["last_price"] == 410.0
+    assert product["last_installment_count"] == 8
+    assert product["last_installment_price"] == 52.5

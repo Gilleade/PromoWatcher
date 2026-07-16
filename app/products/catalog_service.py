@@ -110,6 +110,12 @@ def get_product_detail(conn: sqlite3.Connection, product_id: int) -> Optional[di
         "last_price": product["last_price"],
         "lowest_price_ever": product["lowest_price_ever"],
         "lowest_price_ever_at": product["lowest_price_ever_at"],
+        "last_installment_count": product["last_installment_count"],
+        "last_installment_price": product["last_installment_price"],
+        "last_installment_no_interest": (
+            bool(product["last_installment_no_interest"])
+            if product["last_installment_no_interest"] is not None else None
+        ),
         "latest_coupon": latest_promotion["coupon"] if latest_promotion else None,
         "latest_url": (
             (latest_promotion["clean_url"] or latest_promotion["resolved_url"]

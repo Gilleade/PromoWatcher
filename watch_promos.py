@@ -163,6 +163,10 @@ async def handler(event):
             title_guess=result.parsed.title_guess,
             price=float(result.parsed.price) if result.parsed.price is not None else None,
             coupon=result.parsed.coupon,
+            installment_count=result.parsed.installment_count,
+            installment_price=float(result.parsed.installment_price)
+            if result.parsed.installment_price is not None else None,
+            installment_no_interest=result.parsed.installment_no_interest,
             link_status=result.link_result.status.value,
             url=result.link_result.url or None,
             source_chat_title=chat_name,

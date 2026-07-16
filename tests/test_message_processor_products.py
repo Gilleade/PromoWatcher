@@ -95,6 +95,37 @@ def test_unidentifiable_product_goes_to_review_queue(db_conn):
     assert queue_row["status"] == "PENDING"
 
 
+def test_installment_info_is_stored_on_promotion_and_product(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text=(
+                "BUG: Monitor AOC 22\" 120Hz 1ms\n\n"
+                "DE R$ 499,00\n"
+                "POR R$ 420,00\n"
+                "Em até 8x de R$ 52,50 sem juros"
+            ),
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    assert row["price"] == 420.0
+    assert row["installment_count"] == 8
+    assert row["installment_price"] == 52.5
+    assert row["installment_no_interest"] == 1
+
+    product = db_conn.execute(
+        "SELECT * FROM products WHERE id = ?", (row["product_id"],)
+    ).fetchone()
+    assert product["last_installment_count"] == 8
+    assert product["last_installment_price"] == 52.5
+
+
 def test_message_without_price_skips_product_matching(db_conn):
     with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
         result = process(

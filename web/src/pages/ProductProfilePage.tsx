@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { PriceHistoryChart } from '../components/PriceHistoryChart'
 import { PriceSignalBar } from '../components/PriceSignalBar'
-import { formatDate, formatPrice } from '../utils/format'
+import { formatDate, formatInstallment, formatPrice } from '../utils/format'
 import './ProductProfilePage.css'
 
 export function ProductProfilePage() {
@@ -50,6 +50,14 @@ export function ProductProfilePage() {
 
   const hasRecentBug = product?.price_history.some((p) => p.is_bug_candidate) ?? false
 
+  const installment = product
+    ? formatInstallment(
+        product.last_installment_count,
+        product.last_installment_price,
+        product.last_installment_no_interest,
+      )
+    : null
+
   if (isLoading) return <div className="page"><p className="page-placeholder">Carregando...</p></div>
   if (isError || !product) {
     return <div className="page"><p className="page-placeholder">Produto não encontrado.</p></div>
@@ -80,10 +88,13 @@ export function ProductProfilePage() {
         </div>
       </div>
 
-      <div className="product-profile-price-row">
-        <span className="price price-large">{formatPrice(product.last_price)}</span>
-        {product.latest_store_domain && <span className="tag">{product.latest_store_domain}</span>}
-        {product.latest_coupon && <span className="badge badge-yellow">cupom {product.latest_coupon}</span>}
+      <div className="product-profile-price-block">
+        <div className="product-profile-price-row">
+          <span className="price price-large">{formatPrice(product.last_price)}</span>
+          {product.latest_store_domain && <span className="tag">{product.latest_store_domain}</span>}
+          {product.latest_coupon && <span className="badge badge-yellow">cupom {product.latest_coupon}</span>}
+        </div>
+        {installment && <span className="installment-price-large">{installment}</span>}
       </div>
 
       {stats && (

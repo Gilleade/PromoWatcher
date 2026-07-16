@@ -7,6 +7,9 @@ export interface ProductCard {
   image_url: string | null
   last_price: number | null
   lowest_price_ever: number | null
+  last_installment_count: number | null
+  last_installment_price: number | null
+  last_installment_no_interest: boolean | null
   status: string
 }
 
@@ -31,6 +34,9 @@ export interface ProductDetail {
   last_price: number | null
   lowest_price_ever: number | null
   lowest_price_ever_at: string | null
+  last_installment_count: number | null
+  last_installment_price: number | null
+  last_installment_no_interest: boolean | null
   latest_coupon: string | null
   latest_url: string | null
   latest_store_domain: string | null

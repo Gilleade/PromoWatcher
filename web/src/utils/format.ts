@@ -8,6 +8,16 @@ export function formatPrice(value: number | null | undefined): string {
   return currencyFormatter.format(value)
 }
 
+export function formatInstallment(
+  count: number | null | undefined,
+  unitPrice: number | null | undefined,
+  noInterest: boolean | null | undefined,
+): string | null {
+  if (!count || unitPrice === null || unitPrice === undefined) return null
+  const juros = noInterest ? ' sem juros' : ''
+  return `ou ${count}x de ${currencyFormatter.format(unitPrice)}${juros}`
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—'
   // recorded_at/created_at vêm como "YYYY-MM-DD HH:MM:SS" (UTC, do SQLite)

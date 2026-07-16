@@ -54,6 +54,12 @@
   border-color: var(--accent-purple);
 }
 
+.product-profile-price-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .product-profile-price-row {
   display: flex;
   align-items: center;
@@ -62,6 +68,12 @@
 
 .price-large {
   font-size: 28px;
+}
+
+.installment-price-large {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
 }
 
 .stats-grid {
