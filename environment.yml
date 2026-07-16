@@ -1,0 +1,20 @@
+name: promowatcher
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - -r requirements-dev.txt
+# requirements-dev.txt já inclui requirements.txt (via -r), então este
+# ambiente fica com tudo: watcher (Telethon), API (FastAPI/uvicorn/pydantic),
+# interface Streamlit e as dependências de teste (pytest/httpx).
+#
+# O frontend (web/) não entra aqui — é gerenciado à parte via npm
+# (ver web/package.json). Precisa de Node.js instalado separadamente.
+#
+# Criar o ambiente:
+#   conda env create -f environment.yml
+# Atualizar um ambiente já existente:
+#   conda env update -f environment.yml --prune
