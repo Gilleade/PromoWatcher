@@ -6,6 +6,7 @@ from typing import Callable, Optional
 from app.config import Config
 from app.database import (
     fetch_products_by_ids,
+    find_product_by_variant_key,
     get_next_pending_match_queue_item,
     get_promotion_with_raw_text,
     insert_product,
@@ -13,14 +14,55 @@ from app.database import (
     update_match_queue_status,
     update_promotion_product_match,
 )
-from app.products.ollama_client import OllamaMatchResult, disambiguate_product
+from app.products.matcher import find_candidates
+from app.products.ollama_client import (
+    OllamaExtractionResult,
+    OllamaMatchResult,
+    disambiguate_product,
+    extract_specs_via_ollama,
+)
 from app.products.product_service import record_price_point
-from app.products.spec_extractor import build_variant_key
+from app.products.spec_extractor import ExtractedSpecs, build_variant_key
 
 # Quantas vezes um item pode voltar pra fila como PENDING antes de ser
 # encerrado como NEEDS_HUMAN (dá resiliência a indisponibilidade passageira
 # do Ollama sem deixar item preso pra sempre esperando).
 MAX_ATTEMPTS = 3
+MIN_AI_MATCH_CONFIDENCE = 0.80
+MIN_AI_NEW_CONFIDENCE = 0.90
+
+
+def _merge_missing_specs(specs: dict, extraction: OllamaExtractionResult) -> dict:
+    """A IA só preenche lacunas; nunca sobrescreve um dado determinístico."""
+    merged = dict(specs)
+    if not extraction.ok:
+        return merged
+    for field in ("brand", "model", "storage_gb", "ram_gb", "category", "release_year"):
+        if merged.get(field) is None and getattr(extraction, field) is not None:
+            merged[field] = getattr(extraction, field)
+    found_fields = sum(merged.get(field) is not None for field in ("brand", "model", "storage_gb"))
+    merged["completeness_confidence"] = found_fields / 3.0
+    return merged
+
+
+def _as_extracted_specs(specs: dict) -> ExtractedSpecs:
+    return ExtractedSpecs(
+        brand=specs.get("brand"),
+        model=specs.get("model"),
+        storage_gb=specs.get("storage_gb"),
+        ram_gb=specs.get("ram_gb"),
+        release_year=specs.get("release_year"),
+        category=specs.get("category"),
+        completeness_confidence=float(specs.get("completeness_confidence") or 0.0),
+    )
+
+
+def _new_identity(specs: dict, result: OllamaMatchResult) -> tuple:
+    brand = result.brand or specs.get("brand")
+    model = result.model or specs.get("model")
+    storage_gb = result.storage_gb if result.storage_gb is not None else specs.get("storage_gb")
+    ram_gb = result.ram_gb if result.ram_gb is not None else specs.get("ram_gb")
+    return brand, model, storage_gb, ram_gb
 
 
 def _candidate_dicts(candidate_rows: list) -> list:
@@ -83,56 +125,113 @@ def _create_product_from_ollama(conn: sqlite3.Connection, specs: dict, result: O
 
 
 def process_match_queue_once(conn: sqlite3.Connection, config: Config) -> bool:
-    """Processa um item pendente da fila de casamento de produto. Retorna
-    False quando a fila está vazia (nada a fazer neste ciclo)."""
+    """Processa um item pendente sem aceitar decisões ambíguas da IA."""
     item = get_next_pending_match_queue_item(conn)
     if item is None:
         return False
 
+    attempts = item["attempts"] + 1
     specs = json.loads(item["extracted_specs_json"])
-    raw_candidates = json.loads(item["candidate_products_json"] or "[]")
-    candidate_ids = [c["product_id"] for c in raw_candidates if c.get("product_id") is not None]
-    candidate_rows = fetch_products_by_ids(conn, candidate_ids)
-    candidates = _candidate_dicts(candidate_rows)
+    if specs.get("review_reason") == "MULTIPLE_PRODUCTS":
+        result_json = json.dumps({"decision": "NEEDS_HUMAN", "reason": "MULTIPLE_PRODUCTS"})
+        update_promotion_product_match(
+            conn, promotion_id=item["promotion_id"], product_id=None,
+            match_status="NEEDS_HUMAN", confidence=0.0,
+        )
+        update_match_queue_status(
+            conn, item["id"], status="NEEDS_HUMAN", attempts=attempts, result_json=result_json,
+        )
+        return True
 
     promotion = get_promotion_with_raw_text(conn, item["promotion_id"])
-    raw_text = promotion["raw_message_text"] if promotion else ""
+    if promotion is None:
+        result_json = json.dumps({"decision": "NEEDS_HUMAN", "reason": "PROMOTION_NOT_FOUND"})
+        update_match_queue_status(
+            conn, item["id"], status="NEEDS_HUMAN", attempts=attempts, result_json=result_json,
+        )
+        return True
+    raw_text = promotion["raw_message_text"]
+
+    extraction = None
+    if config.ollama_enabled and (not specs.get("brand") or not specs.get("model")):
+        extraction = extract_specs_via_ollama(config, raw_text)
+        specs = _merge_missing_specs(specs, extraction)
+
+    raw_candidates = json.loads(item["candidate_products_json"] or "[]")
+    candidate_ids = {
+        candidate["product_id"]
+        for candidate in raw_candidates
+        if candidate.get("product_id") is not None
+    }
+    if extraction is not None and extraction.ok:
+        candidate_ids.update(
+            candidate.product_id for candidate in find_candidates(conn, _as_extracted_specs(specs))
+        )
+    candidate_rows = fetch_products_by_ids(conn, list(candidate_ids))
+    candidates = _candidate_dicts(candidate_rows)
 
     result = disambiguate_product(config, extracted=specs, raw_text=raw_text, candidates=candidates)
-    attempts = item["attempts"] + 1
     result_json = json.dumps({
-        "decision": result.decision, "product_id": result.product_id,
-        "confidence": result.confidence, "reason": result.reason,
+        "decision": result.decision,
+        "product_id": result.product_id,
+        "confidence": result.confidence,
+        "reason": result.reason,
+        "enriched_specs": specs,
     })
 
-    valid_candidate_ids = {c["id"] for c in candidates}
-    if result.decision == "MATCH" and result.product_id in valid_candidate_ids:
+    valid_candidate_ids = {candidate["id"] for candidate in candidates}
+    if (
+        result.decision == "MATCH"
+        and result.product_id in valid_candidate_ids
+        and result.confidence >= MIN_AI_MATCH_CONFIDENCE
+    ):
         _finalize_match(
             conn, promotion_row=promotion, product_id=result.product_id,
             match_status="AUTO_MATCH_AI", confidence=result.confidence,
         )
-        update_match_queue_status(conn, item["id"], status="DONE", attempts=attempts, result_json=result_json)
+        update_match_queue_status(
+            conn, item["id"], status="DONE", attempts=attempts, result_json=result_json,
+        )
         return True
 
-    if result.decision == "NEW":
-        product_id = _create_product_from_ollama(conn, specs, result)
+    brand, model, storage_gb, ram_gb = _new_identity(specs, result)
+    can_create = (
+        result.decision == "NEW"
+        and result.confidence >= MIN_AI_NEW_CONFIDENCE
+        and isinstance(brand, str) and bool(brand.strip())
+        and isinstance(model, str) and bool(model.strip())
+    )
+    if can_create:
+        variant_key = build_variant_key(brand, model, storage_gb, ram_gb)
+        existing = find_product_by_variant_key(conn, variant_key)
+        if existing is not None:
+            product_id = existing["id"]
+            match_status = "AUTO_MATCH_AI"
+        else:
+            product_id = _create_product_from_ollama(conn, specs, result)
+            match_status = "AUTO_NEW_AI"
         _finalize_match(
             conn, promotion_row=promotion, product_id=product_id,
-            match_status="AUTO_NEW_AI", confidence=result.confidence,
+            match_status=match_status, confidence=result.confidence,
         )
-        update_match_queue_status(conn, item["id"], status="DONE", attempts=attempts, result_json=result_json)
+        update_match_queue_status(
+            conn, item["id"], status="DONE", attempts=attempts, result_json=result_json,
+        )
         return True
 
-    # UNSURE (ou MATCH com product_id fora da lista de candidatos — nunca
-    # confiamos cegamente num id que a IA inventou)
+    # UNSURE, baixa confiança ou id fora da lista: revisão humana.
     if attempts >= MAX_ATTEMPTS:
         update_promotion_product_match(
             conn, promotion_id=item["promotion_id"], product_id=None,
             match_status="NEEDS_HUMAN", confidence=result.confidence,
         )
-        update_match_queue_status(conn, item["id"], status="NEEDS_HUMAN", attempts=attempts, result_json=result_json)
+        update_match_queue_status(
+            conn, item["id"], status="NEEDS_HUMAN", attempts=attempts, result_json=result_json,
+        )
     else:
-        update_match_queue_status(conn, item["id"], status="PENDING", attempts=attempts, result_json=result_json)
+        update_match_queue_status(
+            conn, item["id"], status="PENDING", attempts=attempts, result_json=result_json,
+        )
     return True
 
 

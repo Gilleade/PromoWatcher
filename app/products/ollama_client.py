@@ -151,6 +151,13 @@ def extract_specs_via_ollama(config: Config, raw_text: str, *,
     )
 
 
+def _normalized_confidence(value: Any) -> float:
+    try:
+        return max(0.0, min(1.0, float(value or 0.0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _format_candidates(candidates: List[dict]) -> str:
     if not candidates:
         return "(nenhum candidato encontrado)"
@@ -195,7 +202,7 @@ def disambiguate_product(config: Config, *, extracted: dict, raw_text: str,
     return OllamaMatchResult(
         decision=decision,
         product_id=data.get("product_id"),
-        confidence=float(data.get("confidence") or 0.0),
+        confidence=_normalized_confidence(data.get("confidence")),
         canonical_title=data.get("canonical_title"),
         brand=data.get("brand"),
         model=data.get("model"),

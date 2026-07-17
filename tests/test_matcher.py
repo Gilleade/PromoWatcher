@@ -5,7 +5,7 @@ from app.products.matcher import (
     DECISION_NEEDS_REVIEW,
     match_product,
 )
-from app.products.spec_extractor import build_variant_key, extract_specs
+from app.products.spec_extractor import ExtractedSpecs, build_variant_key, extract_specs
 
 
 def _seed_product(conn, **overrides):
@@ -90,3 +90,13 @@ def test_similar_but_not_identical_model_lands_in_review_zone(db_conn):
 
     assert decision.decision in (DECISION_NEEDS_REVIEW, DECISION_AUTO_NEW)
     assert decision.decision != DECISION_AUTO_MATCH
+
+
+def test_low_completeness_never_creates_product_automatically(db_conn):
+    specs = ExtractedSpecs(
+        brand="marca",
+        model="modelo",
+        completeness_confidence=0.3,
+    )
+
+    assert match_product(db_conn, specs).decision == DECISION_NEEDS_REVIEW

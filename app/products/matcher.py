@@ -9,6 +9,7 @@ from app.products.spec_extractor import ExtractedSpecs, build_variant_key
 
 AUTO_MATCH_THRESHOLD = 0.85
 NEEDS_REVIEW_THRESHOLD = 0.55
+MIN_AUTO_NEW_COMPLETENESS = 2 / 3
 
 DECISION_AUTO_MATCH = "AUTO_MATCH"
 DECISION_AUTO_NEW = "AUTO_NEW"
@@ -98,6 +99,7 @@ def match_product(conn: sqlite3.Connection, specs: ExtractedSpecs) -> MatchDecis
     se corrige com um clique na tela de admin."""
     has_minimum_identity = specs.brand is not None or specs.model is not None
     incomplete = specs.brand is None or specs.model is None
+    low_quality = specs.completeness_confidence < MIN_AUTO_NEW_COMPLETENESS
 
     if has_minimum_identity:
         variant_key = build_variant_key(specs.brand, specs.model, specs.storage_gb, specs.ram_gb)
@@ -108,14 +110,14 @@ def match_product(conn: sqlite3.Connection, specs: ExtractedSpecs) -> MatchDecis
     candidates = find_candidates(conn, specs)
 
     if not candidates:
-        if incomplete:
+        if incomplete or low_quality:
             return MatchDecision(decision=DECISION_NEEDS_REVIEW, confidence=0.0)
         return MatchDecision(decision=DECISION_AUTO_NEW, confidence=0.0)
 
     best = candidates[0]
 
-    if incomplete or best.confidence < AUTO_MATCH_THRESHOLD:
-        if best.confidence >= NEEDS_REVIEW_THRESHOLD or incomplete:
+    if incomplete or low_quality or best.confidence < AUTO_MATCH_THRESHOLD:
+        if best.confidence >= NEEDS_REVIEW_THRESHOLD or incomplete or low_quality:
             return MatchDecision(
                 decision=DECISION_NEEDS_REVIEW, confidence=best.confidence, candidates=candidates,
             )

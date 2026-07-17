@@ -120,3 +120,13 @@ def test_disambiguate_product_rejects_invalid_decision_value():
         result = disambiguate_product(_config(), extracted={}, raw_text="x", candidates=[])
 
     assert result.decision == "UNSURE"
+
+
+def test_disambiguate_product_normalizes_invalid_confidence():
+    fake_response = _fake_generate_response({
+        "decision": "NEW", "confidence": "alta", "reason": "valor inválido",
+    })
+    with patch("app.products.ollama_client.requests.post", return_value=fake_response):
+        result = disambiguate_product(_config(), extracted={}, raw_text="x", candidates=[])
+
+    assert result.confidence == 0.0

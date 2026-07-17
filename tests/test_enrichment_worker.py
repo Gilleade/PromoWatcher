@@ -16,7 +16,7 @@ from app.products.enrichment_worker import (
     process_match_queue_once,
     run_enrichment_cycle,
 )
-from app.products.ollama_client import OllamaMatchResult
+from app.products.ollama_client import OllamaExtractionResult, OllamaMatchResult
 
 
 def _seed_queue_item(conn, *, price=999.90, candidate_ids=None, specs=None):
@@ -130,7 +130,8 @@ def test_run_enrichment_cycle_drains_multiple_items(tmp_path):
     _seed_queue_item(setup_conn, candidate_ids=[])
     setup_conn.close()
 
-    fake_result = OllamaMatchResult(decision="NEW", confidence=1.0, brand="motorola", reason="ok")
+    fake_result = OllamaMatchResult(
+        decision="NEW", confidence=1.0, brand="motorola", model="moto g56", reason="ok")
     with patch("app.products.enrichment_worker.disambiguate_product", return_value=fake_result):
         processed_count = asyncio.get_event_loop().run_until_complete(
             run_enrichment_cycle(lambda: get_connection(db_path), Config())
@@ -143,3 +144,105 @@ def test_run_enrichment_cycle_drains_multiple_items(tmp_path):
     ).fetchone()[0]
     assert remaining == 0
     verify_conn.close()
+
+
+def test_low_confidence_new_decision_does_not_create_product(db_conn):
+    promotion_id, _ = _seed_queue_item(db_conn, candidate_ids=[])
+    fake_result = OllamaMatchResult(
+        decision="NEW", confidence=0.70, brand="motorola", model="moto g56", reason="incerto",
+    )
+
+    with patch("app.products.enrichment_worker.disambiguate_product", return_value=fake_result):
+        process_match_queue_once(db_conn, Config())
+
+    promotion = db_conn.execute(
+        "SELECT * FROM promotions WHERE id = ?", (promotion_id,)
+    ).fetchone()
+    queue = db_conn.execute("SELECT * FROM product_match_queue").fetchone()
+    assert promotion["product_id"] is None
+    assert queue["status"] == "PENDING"
+    assert db_conn.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0
+
+
+def test_low_confidence_match_does_not_link_product(db_conn):
+    existing_id = insert_product(
+        db_conn, canonical_title="Motorola Moto G55",
+        variant_key="motorola|moto g55|256|8", brand="motorola", model="moto g55",
+        storage_gb=256, ram_gb=8,
+    )
+    promotion_id, _ = _seed_queue_item(db_conn, candidate_ids=[existing_id])
+    fake_result = OllamaMatchResult(
+        decision="MATCH", product_id=existing_id, confidence=0.60, reason="incerto",
+    )
+
+    with patch("app.products.enrichment_worker.disambiguate_product", return_value=fake_result):
+        process_match_queue_once(db_conn, Config())
+
+    promotion = db_conn.execute(
+        "SELECT * FROM promotions WHERE id = ?", (promotion_id,)
+    ).fetchone()
+    assert promotion["product_id"] is None
+
+
+def test_multiple_products_never_reach_ollama_or_create_product(db_conn):
+    promotion_id, _ = _seed_queue_item(
+        db_conn, specs={"review_reason": "MULTIPLE_PRODUCTS"},
+    )
+
+    with (
+        patch("app.products.enrichment_worker.extract_specs_via_ollama") as mock_extract,
+        patch("app.products.enrichment_worker.disambiguate_product") as mock_match,
+    ):
+        process_match_queue_once(db_conn, Config())
+
+    queue = db_conn.execute("SELECT * FROM product_match_queue").fetchone()
+    promotion = db_conn.execute(
+        "SELECT * FROM promotions WHERE id = ?", (promotion_id,)
+    ).fetchone()
+    assert queue["status"] == "NEEDS_HUMAN"
+    assert promotion["product_match_status"] == "NEEDS_HUMAN"
+    assert db_conn.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0
+    mock_extract.assert_not_called()
+    mock_match.assert_not_called()
+
+
+def test_ollama_extraction_only_fills_missing_specs(db_conn):
+    _seed_queue_item(
+        db_conn,
+        specs={
+            "brand": "motorola",
+            "model": None,
+            "storage_gb": 256,
+            "ram_gb": None,
+            "category": "smartphone",
+            "completeness_confidence": 0.67,
+        },
+    )
+    extraction = OllamaExtractionResult(
+        ok=True,
+        brand="marca-inventada",
+        model="moto g56 5g",
+        storage_gb=128,
+        ram_gb=8,
+        category="outra",
+    )
+    unsure = OllamaMatchResult(decision="UNSURE", confidence=0.4, reason="revisar")
+
+    with (
+        patch(
+            "app.products.enrichment_worker.extract_specs_via_ollama",
+            return_value=extraction,
+        ),
+        patch(
+            "app.products.enrichment_worker.disambiguate_product",
+            return_value=unsure,
+        ) as mock_match,
+    ):
+        process_match_queue_once(db_conn, Config())
+
+    enriched = mock_match.call_args.kwargs["extracted"]
+    assert enriched["brand"] == "motorola"
+    assert enriched["model"] == "moto g56 5g"
+    assert enriched["storage_gb"] == 256
+    assert enriched["ram_gb"] == 8
+    assert enriched["category"] == "smartphone"

@@ -78,6 +78,7 @@ def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
             "ram_gb": specs.ram_gb,
             "release_year": specs.release_year,
             "category": specs.category,
+            "completeness_confidence": specs.completeness_confidence,
         })
         candidates_json = json.dumps([
             {"product_id": c.product_id, "confidence": c.confidence, "reason": c.reason}
