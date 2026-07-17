@@ -43,6 +43,21 @@ def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
     e um erro aqui em diante seria um bug real de SQL — deixa propagar para
     o [handler] erro: ... do watch_promos.py, igual ao resto do pipeline de
     alertas."""
+    if parsed.has_multiple_products:
+        update_promotion_product_match(
+            conn,
+            promotion_id=promotion_id,
+            product_id=None,
+            match_status=DECISION_NEEDS_REVIEW,
+            confidence=0.0,
+        )
+        insert_match_queue_item(
+            conn,
+            promotion_id=promotion_id,
+            extracted_specs_json=json.dumps({"review_reason": "MULTIPLE_PRODUCTS"}),
+            candidate_products_json="[]",
+        )
+        return None, None
     if parsed.price is None:
         return None, None
 

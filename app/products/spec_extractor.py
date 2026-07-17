@@ -3,17 +3,19 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from app.parser.normalizer import normalize_text
+from app.parser.product_text import select_product_line
 
 # Mantida manualmente — cobre as marcas mais comuns em grupos de promoção BR.
 # Cada marca canônica tem uma lista de termos-gatilho (a forma como as pessoas
 # realmente escrevem no Telegram, nem sempre o nome oficial da marca —
 # ex.: "Moto G56" sem escrever "Motorola").
 BRAND_ALIASES = {
-    "motorola": ["motorola", "moto "],
-    "apple": ["iphone", "apple", "macbook", "ipad", "airpods"],
-    "samsung": ["samsung", "galaxy"],
+    "motorola": ["motorola", "moto"],
+    "apple": ["iphone", "apple", "macbook", "ipad", "airpods", "airtag"],
+    "samsung": ["samsung"],
     "xiaomi": ["xiaomi", "redmi", "poco"],
-    "lg": ["lg "],
+    "amd": ["amd", "ryzen"],
+    "lg": ["lg"],
     "asus": ["asus"],
     "acer": ["acer"],
     "lenovo": ["lenovo"],
@@ -26,7 +28,7 @@ BRAND_ALIASES = {
     "realme": ["realme"],
     "nokia": ["nokia"],
     "huawei": ["huawei"],
-    "hp": ["hp "],
+    "hp": ["hp"],
     "logitech": ["logitech"],
     "razer": ["razer"],
     "redragon": ["redragon"],
@@ -47,33 +49,65 @@ BRAND_ALIASES = {
 # autoexplicativa.
 CATEGORY_TITLE_PREFIX = {
     "smartphone": "Celular",
+    "tablet": "Tablet",
+    "smartwatch": "Smartwatch",
+    "tracker": "Rastreador",
     "notebook": "Notebook",
     "console": "Console",
     "tv": "TV",
     "fone": "Fone de Ouvido",
+    "caixa_som": "Áudio",
     "monitor": "Monitor",
     "teclado": "Teclado",
     "mouse": "Mouse",
     "controle": "Controle",
+    "acessorio": "Acessório",
+    "placa_mae": "Placa-mãe",
+    "placa_video": "Placa de Vídeo",
+    "processador": "Processador",
+    "impressora": "Impressora",
+    "componente": "Componente",
 }
 
+# A ordem é intencional: termos específicos vencem menções incidentais como
+# "iPhone" na descrição de um AirTag ou "PS5" em um suporte para controle.
 CATEGORY_KEYWORDS = {
-    "smartphone": ["celular", "smartphone", "iphone", "galaxy", "moto g", "moto e", "redmi", "poco"],
+    "tracker": ["airtag", "rastreador gps", "rastreador bluetooth", "localizador"],
+    "tablet": ["tablet", "ipad", "galaxy tab"],
+    "smartwatch": ["smartwatch", "smart watch", "relogio inteligente", "apple watch", "galaxy watch"],
+    "acessorio": ["suporte para controle", "base para controle", "carregador para controle"],
+    "placa_mae": ["placa mae", "placas mae", "motherboard", "mobo"],
+    "placa_video": ["placa de video", "geforce", "radeon", " gpu "],
+    "processador": ["processador", "ryzen", "core i3", "core i5", "core i7", "core i9"],
+    "impressora": ["impressora", "multifuncional"],
+    "caixa_som": ["caixa de som", "soundbar", "partybox"],
+    "componente": ["fans magneticas", "fan magnetica", "kit de fans", "cooler"],
+    "smartphone": [
+        "celular", "smartphone", "iphone", "moto g", "moto e", "redmi", "poco",
+        "galaxy a", "galaxy s", "galaxy m", "galaxy z",
+    ],
     "notebook": ["notebook", "laptop", "macbook", "ultrabook"],
     "console": ["playstation", "ps5", "ps4", "xbox", "nintendo switch", "console"],
-    "tv": ["smart tv", " tv ", "televisao"],
-    "fone": ["fone de ouvido", "headset", "earbud", "airpods", "fone bluetooth"],
-    "monitor": ["monitor gamer", "monitor curvo", "monitor "],
-    "teclado": ["teclado mecanico", "teclado gamer", "teclado "],
-    "mouse": ["mouse gamer", "mouse sem fio", "mouse "],
+    "tv": ["smart tv", "televisao"],
+    "fone": ["fone de ouvido", "headset", "earbud", "airpods", "fone bluetooth", "over ear"],
+    "monitor": ["monitor gamer", "monitor curvo", "monitor"],
+    "teclado": ["teclado mecanico", "teclado gamer", "teclado"],
+    "mouse": ["mouse gamer", "mouse sem fio", "mouse"],
     "controle": ["controle sem fio", "controle gamer", "gamepad"],
 }
 
 _STORAGE_RAM_COMBINED_RE = re.compile(r"(\d{1,4})\s*/\s*(\d{1,4})\s*gb")
-_SINGLE_GB_RE = re.compile(r"(\d{1,4})\s*gb")
+_CAPACITY_RE = re.compile(r"(?P<value>\d{1,4})\s*(?P<unit>tb|gb)\b")
+_RAM_AFTER_RE = re.compile(r"(\d{1,3})\s*gb\s*(?:de\s*)?(?:ram|ddr\d?)\b")
+_RAM_BEFORE_RE = re.compile(r"\bram\s*(?:de\s*)?(\d{1,3})\s*gb\b")
+_STORAGE_CONTEXT_RE = re.compile(r"\b(?:ssd|hd|armazenamento|rom)\s*(?:de\s*)?(\d{1,4})\s*(tb|gb)\b")
+_STORAGE_AFTER_RE = re.compile(r"(\d{1,4})\s*(tb|gb)\s*(?:de\s*)?(?:ssd|hd|armazenamento|rom)\b")
+_VRAM_CONTEXT_RE = re.compile(r"\b(?:vram|gddr\d?)\b")
 _YEAR_RE = re.compile(r"\b(20[0-3]\d)\b")
 _CUTOFF_RE = re.compile(
-    r"(r\$|\d+\s*/\s*\d+\s*gb|\d+\s*gb|\bpor\b|\ba partir\b|\bapenas\b|\bsomente\b|\bcom cupom\b)"
+    r"(r\$|\d+\s*/\s*\d+\s*gb|\d+\s*(?:tb|gb)|\bpor\b|\ba partir\b|"
+    r"\bapenas\b|\bsomente\b|\bcom cupom\b|\blancado\b|\boriginal\b|"
+    r"\bcom\b|\bsem fio\b|\bbluetooth\b)"
 )
 
 
@@ -89,63 +123,110 @@ class ExtractedSpecs:
     completeness_confidence: float = 0.0
 
 
-def _find_brand(normalized_text: str) -> Tuple[Optional[str], Optional[str]]:
-    """Retorna (marca_canonica, termo_que_casou). O termo que casou é o que
-    realmente aparece no texto (ex.: "moto ") e é usado depois para localizar
-    onde o nome do modelo começa — a marca canônica (ex.: "motorola") pode
-    nunca aparecer literalmente na mensagem. Quando a marca aparece mais de
-    uma vez (ex.: "Moto G56 ... direto da Motorola"), usa a ocorrência mais
-    cedo no texto — é ali que o nome do modelo normalmente está."""
-    best: Optional[Tuple[int, str, str]] = None  # (index, canonical, trigger)
+def _bounded_pattern(term: str) -> re.Pattern:
+    clean = term.strip()
+    return re.compile(rf"(?<![a-z0-9]){re.escape(clean)}(?![a-z0-9])")
+
+
+def _find_brand(normalized_text: str, category: Optional[str] = None) -> Tuple[Optional[str], Optional[str]]:
+    """Retorna a marca e o gatilho usando limites reais de palavra."""
+    best: Optional[Tuple[int, str, str]] = None
     for canonical, triggers in BRAND_ALIASES.items():
         for trigger in triggers:
-            idx = normalized_text.find(trigger)
-            if idx != -1 and (best is None or idx < best[0]):
-                best = (idx, canonical, trigger)
-    if best is None:
-        return None, None
-    return best[1], best[2]
+            match = _bounded_pattern(trigger).search(normalized_text)
+            if match and (best is None or match.start() < best[0]):
+                best = (match.start(), canonical, trigger.strip())
+
+    # "Galaxy" só implica Samsung quando a categoria também confirma que é
+    # uma família de dispositivo Samsung; fans "Galaxy V2" não são Samsung.
+    if category in {"smartphone", "tablet", "smartwatch"}:
+        galaxy = _bounded_pattern("galaxy").search(normalized_text)
+        if galaxy and (best is None or galaxy.start() < best[0]):
+            best = (galaxy.start(), "samsung", "galaxy")
+
+    return (best[1], best[2]) if best else (None, None)
 
 
 def _find_category(normalized_text: str) -> Optional[str]:
     for category, keywords in CATEGORY_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword in normalized_text:
-                return category
+        if any(keyword.strip() in normalized_text for keyword in keywords):
+            return category
+    if re.search(r"\bgalaxy\s+[asmz]\d{2,}\b", normalized_text):
+        return "smartphone"
     return None
+
+
+def _capacity_to_gb(value: str, unit: str) -> int:
+    amount = int(value)
+    return amount * 1024 if unit == "tb" else amount
 
 
 def _extract_storage_and_ram(normalized_text: str) -> Tuple[Optional[int], Optional[int]]:
     combined = _STORAGE_RAM_COMBINED_RE.search(normalized_text)
     if combined:
         a, b = int(combined.group(1)), int(combined.group(2))
-        # padrão comum BR "6/128GB" = RAM/Armazenamento (o menor dos dois é a RAM)
         ram, storage = (a, b) if a <= b else (b, a)
         return storage, ram
 
-    storage: Optional[int] = None
     ram: Optional[int] = None
-    for match in _SINGLE_GB_RE.finditer(normalized_text):
-        value = int(match.group(1))
-        if value >= 32 and storage is None:
-            storage = value
-        elif value <= 16 and ram is None:
-            ram = value
+    ram_match = _RAM_AFTER_RE.search(normalized_text) or _RAM_BEFORE_RE.search(normalized_text)
+    if ram_match:
+        ram = int(ram_match.group(1))
+
+    storage: Optional[int] = None
+    storage_match = _STORAGE_CONTEXT_RE.search(normalized_text)
+    if storage_match:
+        storage = _capacity_to_gb(storage_match.group(1), storage_match.group(2))
+    if storage is None:
+        storage_match = _STORAGE_AFTER_RE.search(normalized_text)
+        if storage_match:
+            storage = _capacity_to_gb(storage_match.group(1), storage_match.group(2))
+
+    if storage is None:
+        for match in _CAPACITY_RE.finditer(normalized_text):
+            around = normalized_text[max(0, match.start() - 12):match.end() + 12]
+            if _VRAM_CONTEXT_RE.search(around):
+                continue
+            value = _capacity_to_gb(match.group("value"), match.group("unit"))
+            if value >= 32:
+                storage = value
+                break
+
     return storage, ram
+
+
+_PRODUCT_FAMILY_TRIGGERS = {
+    "iphone", "ipad", "airpods", "airtag", "macbook", "playstation",
+    "ps3", "ps4", "ps5", "xbox", "galaxy", "ryzen",
+}
+_MODEL_STOP_WORDS = {
+    "amd", "intel", "preto", "branco", "azul", "bivolt", "novo", "nova",
+    "wifi", "usb", "tela",
+}
 
 
 def _extract_model(normalized_text: str, matched_trigger: Optional[str]) -> Optional[str]:
     if not matched_trigger:
         return None
-    idx = normalized_text.find(matched_trigger)
-    if idx == -1:
+    match = _bounded_pattern(matched_trigger).search(normalized_text)
+    if not match:
         return None
-    after = normalized_text[idx + len(matched_trigger):].strip()
+
+    after = normalized_text[match.end():].strip()
     cutoff = _CUTOFF_RE.search(after)
-    model_part = after[:cutoff.start()] if cutoff else after[:40]
-    model_part = model_part.strip(" -,:|")
-    words = model_part.split()[:4]
-    return " ".join(words) if words else None
+    model_part = after[:cutoff.start()] if cutoff else after[:80]
+    model_part = re.sub(r"[^a-z0-9+./ ]+", " ", model_part)
+    words = []
+    for word in model_part.split():
+        if word in _MODEL_STOP_WORDS:
+            break
+        words.append(word)
+        if len(words) == 6:
+            break
+
+    if matched_trigger in _PRODUCT_FAMILY_TRIGGERS:
+        words.insert(0, matched_trigger)
+    return " ".join(words).strip() or None
 
 
 def extract_specs(text: str) -> ExtractedSpecs:
@@ -154,12 +235,17 @@ def extract_specs(text: str) -> ExtractedSpecs:
     sinais claros, os campos ficam None e completeness_confidence fica baixo,
     empurrando a decisão para a camada de matching/Ollama."""
     text = text or ""
-    normalized = normalize_text(text)
+    normalized_full = normalize_text(text)
+    product_line = select_product_line(text) or text
+    normalized_product = normalize_text(product_line)
 
-    brand, matched_trigger = _find_brand(normalized)
-    category = _find_category(normalized)
-    storage_gb, ram_gb = _extract_storage_and_ram(normalized)
-    model = _extract_model(normalized, matched_trigger)
+    category = _find_category(normalized_product) or _find_category(normalized_full)
+    brand, matched_trigger = _find_brand(normalized_product, category)
+    if brand is None:
+        brand, matched_trigger = _find_brand(normalized_full, category)
+
+    storage_gb, ram_gb = _extract_storage_and_ram(normalized_full)
+    model = _extract_model(normalized_product, matched_trigger)
 
     year_match = _YEAR_RE.search(text)
     release_year = int(year_match.group(1)) if year_match else None

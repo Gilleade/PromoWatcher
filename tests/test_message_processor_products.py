@@ -210,3 +210,33 @@ def test_message_without_price_skips_product_matching(db_conn):
 
     count = db_conn.execute("SELECT COUNT(*) FROM product_match_queue").fetchone()[0]
     assert count == 0
+
+
+def test_multi_product_list_goes_to_review_without_creating_catalog_item(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text=(
+                "BUG: Placas-mãe em Oferta\n"
+                "ASUS Prime B550M-A WiFi II - R$ 546\nhttps://loja/a\n"
+                "Gigabyte B840M Eagle WiFi6 - R$ 599\nhttps://loja/b\n"
+                "ASRock B650M-HDV/M.2 - R$ 659\nhttps://loja/c"
+            ),
+            message_date="2026-07-16T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    promotion = _promotion_row(db_conn, result.promotion_id)
+    assert promotion["product_match_status"] == "NEEDS_REVIEW"
+    assert promotion["product_id"] is None
+    assert db_conn.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0
+
+    queue = db_conn.execute(
+        "SELECT extracted_specs_json FROM product_match_queue WHERE promotion_id = ?",
+        (result.promotion_id,),
+    ).fetchone()
+    assert "MULTIPLE_PRODUCTS" in queue["extracted_specs_json"]
