@@ -185,12 +185,13 @@ async def handler(event):
                                              message_date, alerts, bool(m.media),
                                              local_image_path)
 
-        if result.status != "NEW_APPROVED" or not result.notify:
+        if not result.notify:
             print(f"[pipeline] {result.status} de {chat_name}: {result.reason}")
             return
 
         notification_text = build_notification_text(
             alert=result.matched_alert,
+            alert_name=result.product_alert_name,
             title_guess=result.parsed.title_guess,
             price=float(result.parsed.price) if result.parsed.price is not None else None,
             coupon=result.parsed.coupon,
@@ -215,6 +216,7 @@ async def handler(event):
                     db_conn,
                     promotion_id=result.promotion_id,
                     alert_id=result.matched_alert.id if result.matched_alert else None,
+                    product_alert_id=result.product_alert_id,
                     channel="telegram",
                     message_sent=notification_text,
                     status="SENT",
@@ -225,6 +227,7 @@ async def handler(event):
                     db_conn,
                     promotion_id=result.promotion_id,
                     alert_id=result.matched_alert.id if result.matched_alert else None,
+                    product_alert_id=result.product_alert_id,
                     channel="telegram",
                     message_sent=notification_text,
                     status="ERROR",

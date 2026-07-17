@@ -3,13 +3,18 @@ from typing import Optional
 from app.models import AlertDef
 
 
-def build_notification_text(*, alert: AlertDef, title_guess: Optional[str], price: Optional[float],
-                             coupon: Optional[str], link_status: str, url: Optional[str],
-                             source_chat_title: Optional[str], score: int, repeat_count: int,
-                             reason: str, installment_count: Optional[int] = None,
+def build_notification_text(*, alert: Optional[AlertDef], title_guess: Optional[str],
+                             price: Optional[float], coupon: Optional[str], link_status: str,
+                             url: Optional[str], source_chat_title: Optional[str],
+                             score: Optional[int], repeat_count: int, reason: str,
+                             alert_name: Optional[str] = None,
+                             installment_count: Optional[int] = None,
                              installment_price: Optional[float] = None,
                              installment_no_interest: Optional[bool] = None) -> str:
-    lines = ["🚨 PromoWatcher", f"Alerta: {alert.name}", f"Score: {score}"]
+    resolved_alert_name = alert.name if alert is not None else alert_name or "Produto monitorado"
+    lines = ["🚨 PromoWatcher", f"Alerta: {resolved_alert_name}"]
+    if score is not None:
+        lines.append(f"Score: {score}")
     if source_chat_title:
         lines.append(f"Origem: {source_chat_title}")
     lines.append(f"Repetições detectadas: {repeat_count}")

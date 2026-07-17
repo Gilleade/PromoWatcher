@@ -4,10 +4,12 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from app.database import (
+    find_matching_product_alert,
     insert_match_queue_item,
     insert_occurrence,
     insert_promotion,
     insert_raw_message,
+    update_promotion_decision,
     update_promotion_price,
     update_promotion_product_match,
 )
@@ -15,7 +17,7 @@ from app.models import AlertDef
 from app.parser.coupon_signal import COUPON, classify_message_kind
 from app.parser.link_resolver import LinkResult, LinkStatus, resolve_links
 from app.parser.text_parser import ParsedMessage, parse_message
-from app.products.matcher import DECISION_NEEDS_REVIEW
+from app.products.matcher import DECISION_BLOCKED, DECISION_NEEDS_REVIEW
 from app.products.product_service import (
     PricePointResult,
     attach_product_image,
@@ -70,6 +72,9 @@ def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
         match_status=decision.decision,
         confidence=decision.confidence,
     )
+    if decision.decision == DECISION_BLOCKED:
+        return product_id, None
+
     if decision.decision == DECISION_NEEDS_REVIEW:
         specs_json = json.dumps({
             "brand": specs.brand,
@@ -166,6 +171,8 @@ class ProcessResult:
     is_bug_price_candidate: bool = False
     price_deviation_percent: Optional[float] = None
     coupon_id: Optional[int] = None
+    product_alert_id: Optional[int] = None
+    product_alert_name: Optional[str] = None
 
 
 def _pick_best_match(matches: List[MatchResult], parsed: ParsedMessage,
@@ -175,6 +182,12 @@ def _pick_best_match(matches: List[MatchResult], parsed: ParsedMessage,
     approved = []
     for match_result in matches:
         if not match_result.matched:
+            continue
+        if (
+            match_result.alert.max_price is not None
+            and parsed.price is not None
+            and float(parsed.price) > match_result.alert.max_price
+        ):
             continue
         score_result = compute_score(
             normalized_text=parsed.normalized_text,
@@ -256,14 +269,28 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
                 conn, product_id=existing_promotion["product_id"], local_path=local_image_path,
             )
         price_point = _update_price_if_changed(conn, existing_promotion, parsed, link_result, chat_title)
+        product_alert = None
+        if price_point is not None:
+            product_alert = find_matching_product_alert(
+                conn,
+                product_id=existing_promotion["product_id"],
+                price=float(parsed.price),
+            )
+        reason = "Duplicado porque já existe promoção com a mesma chave de deduplicação."
+        if product_alert is not None:
+            reason = "Preço atualizado dentro do limite do alerta específico do produto."
         return ProcessResult(
-            status="DUPLICATE",
+            status="PRICE_UPDATE_APPROVED" if product_alert is not None else "DUPLICATE",
             raw_message_id=raw_message_id,
             promotion_id=existing_promotion_id,
-            reason="Duplicado porque já existe promoção com a mesma chave de deduplicação.",
+            reason=reason,
+            notify=bool(product_alert["send_to_telegram"]) if product_alert is not None else False,
             parsed=parsed,
             link_result=link_result,
+            repeat_count=existing_promotion["repeat_count"] + 1,
             product_id=existing_promotion["product_id"],
+            product_alert_id=product_alert["id"] if product_alert is not None else None,
+            product_alert_name=product_alert["canonical_title"] if product_alert is not None else None,
             is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
             price_deviation_percent=price_point.deviation_percent if price_point else None,
         )
@@ -301,14 +328,27 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             conn, promotion_id, parsed, link_result, chat_title,
             local_image_path=local_image_path,
         )
+        product_alert = find_matching_product_alert(
+            conn,
+            product_id=matched_product_id,
+            price=float(parsed.price) if parsed.price is not None else None,
+        )
+        if product_alert is not None:
+            update_promotion_decision(
+                conn, promotion_id=promotion_id, status="APPROVED", score=None,
+            )
+            reason = "Preço dentro do limite do alerta específico do produto."
         return ProcessResult(
-            status="NEW_IGNORED",
+            status="NEW_APPROVED" if product_alert is not None else "NEW_IGNORED",
             raw_message_id=raw_message_id,
             promotion_id=promotion_id,
             reason=reason,
+            notify=bool(product_alert["send_to_telegram"]) if product_alert is not None else False,
             parsed=parsed,
             link_result=link_result,
             product_id=matched_product_id,
+            product_alert_id=product_alert["id"] if product_alert is not None else None,
+            product_alert_name=product_alert["canonical_title"] if product_alert is not None else None,
             is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
             price_deviation_percent=price_point.deviation_percent if price_point else None,
         )
@@ -342,17 +382,33 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
         local_image_path=local_image_path,
     )
 
+    product_alert = find_matching_product_alert(
+        conn,
+        product_id=matched_product_id,
+        price=float(parsed.price) if parsed.price is not None else None,
+    )
+    reason = f"{best_match.reason} {best_score.reason}"
+    if product_alert is not None:
+        reason += " Também corresponde ao alerta específico do produto."
+
     return ProcessResult(
         status="NEW_APPROVED",
         raw_message_id=raw_message_id,
         promotion_id=promotion_id,
-        reason=f"{best_match.reason} {best_score.reason}",
+        reason=reason,
         score=best_score.score,
         matched_alert=best_match.alert,
-        notify=best_match.alert.send_to_telegram,
+        notify=(
+            best_match.alert.send_to_telegram
+            or bool(product_alert["send_to_telegram"])
+            if product_alert is not None
+            else best_match.alert.send_to_telegram
+        ),
         parsed=parsed,
         link_result=link_result,
         product_id=matched_product_id,
+        product_alert_id=product_alert["id"] if product_alert is not None else None,
+        product_alert_name=product_alert["canonical_title"] if product_alert is not None else None,
         is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
         price_deviation_percent=price_point.deviation_percent if price_point else None,
     )

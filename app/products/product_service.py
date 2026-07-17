@@ -24,7 +24,13 @@ from app.database import (
     update_promotion_product_match,
     upsert_product_alert,
 )
-from app.products.matcher import DECISION_AUTO_MATCH, DECISION_AUTO_NEW, MatchDecision, match_product
+from app.products.matcher import (
+    DECISION_AUTO_MATCH,
+    DECISION_AUTO_NEW,
+    DECISION_BLOCKED,
+    MatchDecision,
+    match_product,
+)
 from app.products.spec_extractor import CATEGORY_TITLE_PREFIX, ExtractedSpecs, build_variant_key
 
 # Mínimo de pontos de histórico antes de a detecção de bug por desvio entrar
@@ -72,6 +78,9 @@ def get_or_create_product(conn: sqlite3.Connection, specs: ExtractedSpecs) -> Tu
 
     if decision.decision == DECISION_AUTO_MATCH:
         touch_product_seen(conn, decision.product_id)
+        return decision.product_id, decision
+
+    if decision.decision == DECISION_BLOCKED:
         return decision.product_id, decision
 
     if decision.decision == DECISION_AUTO_NEW:

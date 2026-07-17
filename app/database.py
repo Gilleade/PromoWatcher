@@ -101,14 +101,15 @@ def insert_occurrence(conn: sqlite3.Connection, *, promotion_id: int, raw_messag
 
 def insert_notification(conn: sqlite3.Connection, *, promotion_id: int, alert_id: Optional[int],
                          channel: str, message_sent: str, status: str = "SENT",
-                         error_message: Optional[str] = None) -> int:
+                         error_message: Optional[str] = None,
+                         product_alert_id: Optional[int] = None) -> int:
     cur = conn.execute(
         """
         INSERT INTO notifications
-            (promotion_id, alert_id, channel, message_sent, status, error_message)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (promotion_id, alert_id, product_alert_id, channel, message_sent, status, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (promotion_id, alert_id, channel, message_sent, status, error_message),
+        (promotion_id, alert_id, product_alert_id, channel, message_sent, status, error_message),
     )
     conn.commit()
     return cur.lastrowid
@@ -172,6 +173,20 @@ def insert_product(conn: sqlite3.Connection, *, canonical_title: str, variant_ke
 def find_product_by_variant_key(conn: sqlite3.Connection, variant_key: str) -> Optional[sqlite3.Row]:
     return conn.execute(
         "SELECT * FROM products WHERE variant_key = ? AND status = 'ACTIVE' LIMIT 1",
+        (variant_key,),
+    ).fetchone()
+
+
+def find_product_by_variant_key_any_status(
+    conn: sqlite3.Connection, variant_key: str,
+) -> Optional[sqlite3.Row]:
+    return conn.execute(
+        """
+        SELECT * FROM products
+        WHERE variant_key = ?
+        ORDER BY CASE status WHEN 'ACTIVE' THEN 0 WHEN 'BLOCKED' THEN 1 ELSE 2 END
+        LIMIT 1
+        """,
         (variant_key,),
     ).fetchone()
 
@@ -447,6 +462,36 @@ def list_favorite_products(conn: sqlite3.Connection) -> list:
         ORDER BY f.created_at DESC
         """
     ).fetchall()
+
+
+def find_matching_product_alert(
+    conn: sqlite3.Connection, *, product_id: Optional[int], price: Optional[float],
+) -> Optional[sqlite3.Row]:
+    if product_id is None or price is None:
+        return None
+    return conn.execute(
+        """
+        SELECT pa.*, p.canonical_title
+        FROM product_alerts pa
+        JOIN products p ON p.id = pa.product_id
+        WHERE pa.product_id = ?
+          AND pa.enabled = 1
+          AND p.status = 'ACTIVE'
+          AND (pa.max_price IS NULL OR ? <= pa.max_price)
+        LIMIT 1
+        """,
+        (product_id, price),
+    ).fetchone()
+
+
+def update_promotion_decision(
+    conn: sqlite3.Connection, *, promotion_id: int, status: str, score: Optional[int] = None,
+) -> None:
+    conn.execute(
+        "UPDATE promotions SET status = ?, score = ?, updated_at = datetime('now') WHERE id = ?",
+        (status, score, promotion_id),
+    )
+    conn.commit()
 
 
 def upsert_product_alert(conn: sqlite3.Connection, *, product_id: int, enabled: bool,

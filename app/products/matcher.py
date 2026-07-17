@@ -4,7 +4,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from app.database import find_product_by_variant_key, list_active_products
+from app.database import find_product_by_variant_key_any_status, list_active_products
 from app.products.spec_extractor import ExtractedSpecs, build_variant_key
 
 AUTO_MATCH_THRESHOLD = 0.85
@@ -14,6 +14,7 @@ MIN_AUTO_NEW_COMPLETENESS = 2 / 3
 DECISION_AUTO_MATCH = "AUTO_MATCH"
 DECISION_AUTO_NEW = "AUTO_NEW"
 DECISION_NEEDS_REVIEW = "NEEDS_REVIEW"
+DECISION_BLOCKED = "BLOCKED"
 
 
 @dataclass
@@ -103,9 +104,17 @@ def match_product(conn: sqlite3.Connection, specs: ExtractedSpecs) -> MatchDecis
 
     if has_minimum_identity:
         variant_key = build_variant_key(specs.brand, specs.model, specs.storage_gb, specs.ram_gb)
-        exact = find_product_by_variant_key(conn, variant_key)
-        if exact:
+        exact = find_product_by_variant_key_any_status(conn, variant_key)
+        if exact and exact["status"] == "ACTIVE":
             return MatchDecision(decision=DECISION_AUTO_MATCH, product_id=exact["id"], confidence=1.0)
+        if exact and exact["status"] == "BLOCKED":
+            return MatchDecision(decision=DECISION_BLOCKED, product_id=exact["id"], confidence=1.0)
+        if exact and exact["status"] == "MERGED" and exact["merged_into_product_id"] is not None:
+            return MatchDecision(
+                decision=DECISION_AUTO_MATCH,
+                product_id=exact["merged_into_product_id"],
+                confidence=1.0,
+            )
 
     candidates = find_candidates(conn, specs)
 
