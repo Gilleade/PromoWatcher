@@ -1,9 +1,15 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 from app.database import (
     find_promotion_by_dedupe_key,
+    get_connection,
+    init_db,
     insert_occurrence,
     insert_product,
     insert_product_image,
     insert_promotion,
+    insert_promotion_if_absent,
     insert_raw_message,
     update_product_image_url_if_null,
     upsert_alert,
@@ -163,3 +169,46 @@ def test_update_product_image_url_if_null_does_not_overwrite(db_conn):
     assert became_primary is False
     row = db_conn.execute("SELECT image_url FROM products WHERE id = ?", (product_id,)).fetchone()
     assert row["image_url"] == "/media/first.jpg"
+
+
+def test_insert_promotion_if_absent_is_atomic_between_connections(tmp_path):
+    db_path = str(tmp_path / "atomic_dedupe.sqlite3")
+    setup = init_db(db_path)
+    raw_ids = [
+        insert_raw_message(
+            setup,
+            telegram_message_id=index,
+            chat_id=index,
+            chat_title=f"Grupo {index}",
+            sender_id=None,
+            message_text="mesma promoção",
+            message_date="2026-07-16T10:00:00",
+        )
+        for index in (1, 2)
+    ]
+    setup.close()
+    barrier = Barrier(2)
+
+    def reserve(raw_message_id):
+        conn = get_connection(db_path)
+        try:
+            barrier.wait()
+            return insert_promotion_if_absent(
+                conn,
+                raw_message_id=raw_message_id,
+                dedupe_key="clean:https://loja.com/produto",
+                title_guess="Produto",
+                price=100.0,
+                status="IGNORED",
+            )
+        finally:
+            conn.close()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(reserve, raw_ids))
+
+    assert sorted(created for _, created in results) == [False, True]
+    assert results[0][0] == results[1][0]
+    verify = get_connection(db_path)
+    assert verify.execute("SELECT COUNT(*) FROM promotions").fetchone()[0] == 1
+    verify.close()

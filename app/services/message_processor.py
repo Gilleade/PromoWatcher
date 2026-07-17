@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -7,7 +8,7 @@ from app.database import (
     find_matching_product_alert,
     insert_match_queue_item,
     insert_occurrence,
-    insert_promotion,
+    insert_promotion_if_absent,
     insert_raw_message,
     update_promotion_decision,
     update_promotion_price,
@@ -31,6 +32,7 @@ from app.rules.score import ScoreResult, compute_score
 from app.services.coupon_service import process_coupon_message
 
 NO_MATCH_REASON = "Ignorado: nenhum alerta cadastrado casou com a mensagem."
+_PRODUCT_MATCH_LOCK = threading.RLock()
 
 
 def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
@@ -64,7 +66,8 @@ def _apply_product_matching(conn: sqlite3.Connection, promotion_id: int,
         return None, None
 
     specs = extract_specs(parsed.raw_text)
-    product_id, decision = get_or_create_product(conn, specs)
+    with _PRODUCT_MATCH_LOCK:
+        product_id, decision = get_or_create_product(conn, specs)
     update_promotion_product_match(
         conn,
         promotion_id=promotion_id,
@@ -175,6 +178,56 @@ class ProcessResult:
     product_alert_name: Optional[str] = None
 
 
+def _handle_existing_promotion(
+    conn: sqlite3.Connection, *, existing_promotion_id: int, raw_message_id: int,
+    parsed: ParsedMessage, link_result: LinkResult, chat_title: Optional[str],
+    message_date: str, local_image_path: Optional[str],
+) -> ProcessResult:
+    existing_promotion = conn.execute(
+        "SELECT * FROM promotions WHERE id = ?", (existing_promotion_id,)
+    ).fetchone()
+    insert_occurrence(
+        conn,
+        promotion_id=existing_promotion_id,
+        raw_message_id=raw_message_id,
+        chat_title=chat_title,
+        message_date=message_date,
+        original_url=parsed.links[0] if parsed.links else None,
+    )
+    if existing_promotion["product_id"] is not None and local_image_path is not None:
+        attach_product_image(
+            conn, product_id=existing_promotion["product_id"], local_path=local_image_path,
+        )
+    price_point = _update_price_if_changed(
+        conn, existing_promotion, parsed, link_result, chat_title,
+    )
+    product_alert = None
+    if price_point is not None:
+        product_alert = find_matching_product_alert(
+            conn,
+            product_id=existing_promotion["product_id"],
+            price=float(parsed.price),
+        )
+    reason = "Duplicado porque já existe promoção com a mesma chave de deduplicação."
+    if product_alert is not None:
+        reason = "Preço atualizado dentro do limite do alerta específico do produto."
+    return ProcessResult(
+        status="PRICE_UPDATE_APPROVED" if product_alert is not None else "DUPLICATE",
+        raw_message_id=raw_message_id,
+        promotion_id=existing_promotion_id,
+        reason=reason,
+        notify=bool(product_alert["send_to_telegram"]) if product_alert is not None else False,
+        parsed=parsed,
+        link_result=link_result,
+        repeat_count=existing_promotion["repeat_count"] + 1,
+        product_id=existing_promotion["product_id"],
+        product_alert_id=product_alert["id"] if product_alert is not None else None,
+        product_alert_name=product_alert["canonical_title"] if product_alert is not None else None,
+        is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
+        price_deviation_percent=price_point.deviation_percent if price_point else None,
+    )
+
+
 def _pick_best_match(matches: List[MatchResult], parsed: ParsedMessage,
                       store_domain: Optional[str]) -> tuple:
     """Retorna (matched_result, score_result) do melhor alerta aprovado, ou
@@ -253,46 +306,15 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
 
     existing_promotion_id = find_existing_promotion_id(conn, dedupe_key)
     if existing_promotion_id is not None:
-        existing_promotion = conn.execute(
-            "SELECT * FROM promotions WHERE id = ?", (existing_promotion_id,)
-        ).fetchone()
-        insert_occurrence(
+        return _handle_existing_promotion(
             conn,
-            promotion_id=existing_promotion_id,
+            existing_promotion_id=existing_promotion_id,
             raw_message_id=raw_message_id,
-            chat_title=chat_title,
-            message_date=message_date,
-            original_url=parsed.links[0] if parsed.links else None,
-        )
-        if existing_promotion["product_id"] is not None and local_image_path is not None:
-            attach_product_image(
-                conn, product_id=existing_promotion["product_id"], local_path=local_image_path,
-            )
-        price_point = _update_price_if_changed(conn, existing_promotion, parsed, link_result, chat_title)
-        product_alert = None
-        if price_point is not None:
-            product_alert = find_matching_product_alert(
-                conn,
-                product_id=existing_promotion["product_id"],
-                price=float(parsed.price),
-            )
-        reason = "Duplicado porque já existe promoção com a mesma chave de deduplicação."
-        if product_alert is not None:
-            reason = "Preço atualizado dentro do limite do alerta específico do produto."
-        return ProcessResult(
-            status="PRICE_UPDATE_APPROVED" if product_alert is not None else "DUPLICATE",
-            raw_message_id=raw_message_id,
-            promotion_id=existing_promotion_id,
-            reason=reason,
-            notify=bool(product_alert["send_to_telegram"]) if product_alert is not None else False,
             parsed=parsed,
             link_result=link_result,
-            repeat_count=existing_promotion["repeat_count"] + 1,
-            product_id=existing_promotion["product_id"],
-            product_alert_id=product_alert["id"] if product_alert is not None else None,
-            product_alert_name=product_alert["canonical_title"] if product_alert is not None else None,
-            is_bug_price_candidate=price_point.is_bug_candidate if price_point else False,
-            price_deviation_percent=price_point.deviation_percent if price_point else None,
+            chat_title=chat_title,
+            message_date=message_date,
+            local_image_path=local_image_path,
         )
 
     matches = match_alerts(parsed.normalized_text, alerts)
@@ -301,7 +323,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
     if best_match is None:
         blocked = next((m for m in matches if m.matched_excluded), None)
         reason = blocked.reason if blocked else NO_MATCH_REASON
-        promotion_id = insert_promotion(
+        promotion_id, created = insert_promotion_if_absent(
             conn,
             raw_message_id=raw_message_id,
             title_guess=parsed.title_guess,
@@ -324,6 +346,17 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             status="IGNORED",
             score=None,
         )
+        if not created:
+            return _handle_existing_promotion(
+                conn,
+                existing_promotion_id=promotion_id,
+                raw_message_id=raw_message_id,
+                parsed=parsed,
+                link_result=link_result,
+                chat_title=chat_title,
+                message_date=message_date,
+                local_image_path=local_image_path,
+            )
         matched_product_id, price_point = _apply_product_matching(
             conn, promotion_id, parsed, link_result, chat_title,
             local_image_path=local_image_path,
@@ -353,7 +386,7 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
             price_deviation_percent=price_point.deviation_percent if price_point else None,
         )
 
-    promotion_id = insert_promotion(
+    promotion_id, created = insert_promotion_if_absent(
         conn,
         raw_message_id=raw_message_id,
         title_guess=parsed.title_guess,
@@ -377,6 +410,17 @@ def process(conn: sqlite3.Connection, *, telegram_message_id: int, chat_id: int,
         score=best_score.score,
         matched_alert_id=best_match.alert.id,
     )
+    if not created:
+        return _handle_existing_promotion(
+            conn,
+            existing_promotion_id=promotion_id,
+            raw_message_id=raw_message_id,
+            parsed=parsed,
+            link_result=link_result,
+            chat_title=chat_title,
+            message_date=message_date,
+            local_image_path=local_image_path,
+        )
     matched_product_id, price_point = _apply_product_matching(
         conn, promotion_id, parsed, link_result, chat_title,
         local_image_path=local_image_path,

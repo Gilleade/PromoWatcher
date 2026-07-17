@@ -51,7 +51,8 @@ def insert_promotion(conn: sqlite3.Connection, *, raw_message_id: int, title_gue
                       installment_count=None, installment_price=None, installment_no_interest=None,
                       source_chat_title=None, original_links=None, selected_original_url=None,
                       resolved_url=None, clean_url=None, link_status=None, store_domain=None,
-                      dedupe_key=None, status=None, score=None, matched_alert_id=None) -> int:
+                      dedupe_key=None, status=None, score=None, matched_alert_id=None,
+                      _commit: bool = True) -> int:
     cur = conn.execute(
         """
         INSERT INTO promotions
@@ -67,8 +68,34 @@ def insert_promotion(conn: sqlite3.Connection, *, raw_message_id: int, title_gue
          source_chat_title, original_links, selected_original_url, resolved_url,
          clean_url, link_status, store_domain, dedupe_key, status, score, matched_alert_id),
     )
-    conn.commit()
+    if _commit:
+        conn.commit()
     return cur.lastrowid
+
+
+def insert_promotion_if_absent(
+    conn: sqlite3.Connection, *, dedupe_key: str, **promotion_fields,
+) -> tuple[int, bool]:
+    """Reserva uma chave de deduplicação sob lock de escrita do SQLite."""
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute(
+            "SELECT id FROM promotions WHERE dedupe_key = ? LIMIT 1", (dedupe_key,)
+        ).fetchone()
+        if existing is not None:
+            conn.commit()
+            return existing["id"], False
+        promotion_id = insert_promotion(
+            conn,
+            dedupe_key=dedupe_key,
+            _commit=False,
+            **promotion_fields,
+        )
+        conn.commit()
+        return promotion_id, True
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def find_promotion_by_dedupe_key(conn: sqlite3.Connection, dedupe_key: str) -> Optional[sqlite3.Row]:
