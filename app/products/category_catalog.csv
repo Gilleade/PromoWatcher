@@ -1,0 +1,61 @@
+family,category,occurrences,priority,identity_fields,variant_fields,allowed_units,hard_conflicts,status
+mobile,smartphone,227,HIGH,"brand,model","storage_gb,ram_gb,color,connectivity,sim_type",GB;cor;4G/5G,brand;model_code;storage_gb,PROPOSED
+unresolved,unresolved_product,207,HIGH,"brand,model_or_line,product_type","size,color,capacity,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+computing,monitor,189,HIGH,"brand,model","screen_inches,resolution,panel,refresh_hz,response_ms",polegadas;Hz;ms,brand;model_code;screen_inches,PROPOSED
+pc_component,graphics_card,178,HIGH,"gpu_vendor,gpu_model,board_partner","vram_gb,edition,color",GB GDDR,gpu_model;vram_gb,PROPOSED
+consumer_electronics,audio,160,HIGH,"brand,model,product_type","power_watts,battery_hours,connectivity,color",W RMS;h;Bluetooth,brand;model;product_type,PROPOSED
+personal_care,beauty_personal_care,133,HIGH,"brand,product_line,product_type","volume_ml,weight_g,fragrance,skin_type,pack_count",ml;g;quantidade,brand;product_line;product_type;volume_ml,PROPOSED
+consumer_electronics,tv,129,HIGH,"brand,model","screen_inches,resolution,panel,refresh_hz",polegadas;Hz,brand;model_code;screen_inches,PROPOSED
+pc_component,motherboard,114,HIGH,"brand,model","chipset,socket,form_factor,wifi",socket;ATX;mATX,brand;model;chipset;socket,PROPOSED
+grocery,food_beverage,95,HIGH,"brand,product_name","weight_g,volume_ml,flavor,pack_count",g;kg;ml;L;quantidade,brand;product_name;weight_g;volume_ml,PROPOSED
+fashion,footwear,90,HIGH,"brand,model_or_line,product_type","size,color,gender,sport",numeração,brand;model_or_line;product_type,PROPOSED
+computing,notebook,84,HIGH,"brand,model_or_line,cpu","ram_gb,storage_gb,gpu,screen_inches,color",GB;TB;polegadas,brand;model_code;cpu;gpu,PROPOSED
+computing,computer_peripheral,81,HIGH,"brand,model,product_type","layout,switch_type,connectivity,color",ABNT2;Bluetooth;2.4GHz,brand;model;product_type,PROPOSED
+fashion,fashion,78,HIGH,"brand,product_line,product_type","size,color,gender,material,pack_count",tamanho;quantidade,brand;product_line;product_type,PROPOSED
+climate,air_conditioner,78,HIGH,"brand,model","capacity_btu,voltage,cycle,inverter",BTU/h;V,brand;model;capacity_btu;voltage,PROPOSED
+gaming,console,74,HIGH,"brand,family,edition","storage_gb,disc_drive,bundle,color",GB;TB,brand;family;edition;storage_gb;disc_drive,PROPOSED
+pc_component,case_cooling,62,HIGH,"brand,model,product_type","size_mm,fan_count,radiator_mm,color",mm;quantidade,brand;model;product_type,PROPOSED
+home,kitchenware,61,HIGH,"brand,product_line,product_type","piece_count,capacity_ml,material,size_cm",peças;ml;L;cm,brand;product_line;product_type;piece_count,PROPOSED
+connected_home,smart_home_network,58,HIGH,"brand,model,product_type","protocol,wifi_generation,coverage,color",Wi-Fi;GHz;m²,brand;model;product_type,PROPOSED
+pc_component,processor,50,HIGH,"brand,family,model","socket,generation,suffix,cores",GHz;cores,brand;model;suffix,PROPOSED
+small_appliance,small_appliance,42,MEDIUM,"brand,model,product_type","capacity_liters,power_watts,voltage,color",L;W;V,brand;model;product_type;voltage,PROPOSED
+mobile,tablet,41,MEDIUM,"brand,model","storage_gb,ram_gb,screen_inches,connectivity,color",GB;polegadas;Wi-Fi/LTE/5G,brand;model_code;storage_gb,PROPOSED
+home,furniture,41,MEDIUM,"brand,model_or_line,product_type","dimensions_cm,material,color,load_kg",cm;kg,brand;model_or_line;product_type;dimensions_cm,PROPOSED
+wearable,smartwatch,32,MEDIUM,"brand,model","case_mm,connectivity,color,edition",mm;LTE;GPS,brand;model_code;case_mm,PROPOSED
+small_appliance,air_fryer,31,MEDIUM,"brand,model","capacity_liters,power_watts,voltage,oven_type",L;W;V,brand;model;capacity_liters;voltage,PROPOSED
+tools,tools_garden,25,MEDIUM,"brand,model,product_type","power_watts,voltage,size,kit_count",W;V;mm;peças,brand;model;product_type,PROPOSED
+major_appliance,stove_oven,24,MEDIUM,"brand,model,product_type","burner_count,capacity_liters,voltage,fuel_type",bocas;L;V,brand;model;product_type;voltage,PROPOSED
+sports,sports_fitness,23,MEDIUM,"brand,model_or_line,product_type","weight_kg,size,color,max_load_kg",kg;tamanho,brand;model_or_line;product_type,PROPOSED
+fashion,bags_luggage,23,MEDIUM,"brand,model_or_line,product_type","capacity_liters,size,color,material",L;tamanho,brand;model_or_line;product_type,PROPOSED
+grocery,supplements,22,MEDIUM,"brand,product_name","weight_g,servings,flavor,active_ingredient",g;kg;doses,brand;product_name;weight_g,PROPOSED
+toys,toys_collectibles,22,MEDIUM,"brand,line,product_type","character,edition,piece_count,age_range",peças;idade,brand;line;product_type;edition,PROPOSED
+major_appliance,refrigerator,22,MEDIUM,"brand,model","capacity_liters,voltage,door_type,color",L;V,brand;model;capacity_liters;voltage,PROPOSED
+small_appliance,cleaning_appliance,20,MEDIUM,"brand,model,product_type","power_watts,voltage,pressure_psi,capacity_liters",W;V;psi;L,brand;model;product_type;voltage,PROPOSED
+home,cleaning_product,20,MEDIUM,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+home,home_textile,18,MEDIUM,"brand,product_line,product_type","size,color,material,piece_count",cm;peças,brand;product_line;product_type;size,PROPOSED
+pc_component,memory_ram,17,MEDIUM,"brand,model_or_line","capacity_gb,module_count,ddr_generation,speed_mhz,latency",GB;MHz;CL,capacity_gb;ddr_generation;speed_mhz;module_count,PROPOSED
+electronics_accessory,power_charging,17,MEDIUM,"brand,model,product_type","capacity_mah,power_watts,connector_count",mAh;W,brand;model;product_type;capacity_mah,PROPOSED
+major_appliance,washing_machine,15,MEDIUM,"brand,model","capacity_kg,voltage,washer_dryer,color",kg;V,brand;model;capacity_kg;voltage,PROPOSED
+pc_component,power_supply,14,LOW,"brand,model","power_watts,efficiency,modularity",W;80 Plus,brand;model;power_watts,PROPOSED
+consumer_electronics,camera_security,13,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+home_electrical,lighting_electrical,11,LOW,"brand,model,product_type","power_watts,voltage,length_m,color",W;V;m,brand;model;product_type;voltage,PROPOSED
+computing,printer,9,LOW,"brand,model_or_line,product_type","size,color,capacity,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+fashion,fashion_accessory,9,LOW,"brand,model_or_line,product_type","size,color,material,gender",mm;tamanho,brand;model_or_line;product_type,PROPOSED
+baby,baby,8,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+major_appliance,microwave,8,LOW,"brand,model","capacity_liters,power_watts,voltage,color",L;W;V,brand;model;capacity_liters;voltage,PROPOSED
+home,home_improvement,7,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+pet,pet,7,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+climate,climate_appliance,6,LOW,"brand,model_or_line,product_type","size,color,capacity,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+major_appliance,dishwasher,5,LOW,"brand,model","place_settings,voltage,color",serviços;V,brand;model;place_settings;voltage,PROPOSED
+pc_component,storage,5,LOW,"brand,model","capacity_gb,interface,form_factor,read_speed_mbps",GB;TB;MB/s,brand;model;capacity_gb;interface,PROPOSED
+consumer_electronics,projector,5,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+health,health,4,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+home,home_organization,3,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+digital_service,digital_service,2,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+automotive,automotive,2,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+gaming,digital_game,2,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+consumer_electronics,e_reader,2,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+consumer_electronics,drone,1,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+consumer_electronics,media_device,1,LOW,"brand,model_or_line,product_type","size,color,capacity,edition,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
+major_appliance,commercial_refrigeration,1,LOW,"brand,model","capacity_liters,voltage,door_type",L;V,brand;model;capacity_liters;voltage,PROPOSED
+sports,outdoor_leisure,1,LOW,"brand,model_or_line,product_type","size,color,capacity,pack_count",unidade contextual,brand;model_or_line;product_type,PROPOSED
