@@ -24,6 +24,38 @@ MIGRATIONS: List[Migration] = [
         ALTER TABLE products ADD COLUMN last_installment_price REAL;
         ALTER TABLE products ADD COLUMN last_installment_no_interest INTEGER;
     """),
+    ("0004_single_product_image", """
+        DELETE FROM product_images
+        WHERE id IN (
+            SELECT id
+            FROM (
+                SELECT pi.id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY pi.product_id
+                           ORDER BY
+                               CASE WHEN pi.image_url = p.image_url THEN 0
+                                    WHEN pi.is_primary = 1 THEN 1 ELSE 2 END,
+                               pi.id
+                       ) AS position
+                FROM product_images pi
+                JOIN products p ON p.id = pi.product_id
+            ) ranked
+            WHERE position > 1
+        );
+        UPDATE product_images SET is_primary = 1;
+        UPDATE products
+        SET image_url = (
+            SELECT image_url FROM product_images
+            WHERE product_images.product_id = products.id
+        )
+        WHERE image_url IS NULL
+          AND EXISTS (
+              SELECT 1 FROM product_images
+              WHERE product_images.product_id = products.id
+          );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_product_images_one_per_product
+            ON product_images (product_id);
+    """),
 ]
 
 _TRACKING_TABLE_SQL = """

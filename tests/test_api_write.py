@@ -10,6 +10,7 @@ from app.database import (
 
 def _seed_product(conn, **overrides):
     defaults = dict(canonical_title="Motorola Moto G56 5G 256GB", variant_key="motorola|g56|256|8",
+                     image_url="/media/moto-g56.jpg",
                      brand="motorola", model="moto g56 5g", storage_gb=256, ram_gb=8)
     defaults.update(overrides)
     return insert_product(conn, **defaults)

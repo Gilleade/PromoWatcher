@@ -10,11 +10,9 @@ from app.database import (
     insert_favorite,
     insert_price_history_point,
     insert_product,
-    insert_product_image,
     list_price_history,
     touch_product_seen,
     update_match_queue_status,
-    update_product_image_url_if_null,
     update_product_price_stats,
     update_product_status,
     update_promotion_product_match,
@@ -147,20 +145,41 @@ def record_price_point(conn: sqlite3.Connection, *, product_id: int, price: floa
     )
 
 
-def attach_product_image(conn: sqlite3.Connection, *, product_id: int, local_path: str) -> None:
-    """Registra uma imagem baixada do Telegram para o produto. A primeira
-    imagem vence: só vira a foto principal (products.image_url) se o
-    produto ainda não tiver nenhuma — nunca sobrescreve uma já conhecida,
-    mesmo princípio "nunca apagar dado bom" já usado em
-    update_product_price_stats para o parcelamento. O prefixo /media/ aqui
-    precisa ficar em sincronia com o StaticFiles mount em app/api/main.py."""
+def attach_product_image(conn: sqlite3.Connection, *, product_id: int, local_path: str) -> bool:
+    """Registra, de forma atômica, a única imagem permitida para o produto.
+
+    Retorna ``True`` quando esta chamada vinculou a imagem e ``False`` se o
+    produto já possuía uma. O prefixo /media/ precisa ficar em sincronia com
+    o StaticFiles mount em app/api/main.py.
+    """
     filename = os.path.basename(local_path)
     image_url = f"/media/{filename}"
-    became_primary = update_product_image_url_if_null(conn, product_id, image_url)
-    insert_product_image(
-        conn, product_id=product_id, local_path=local_path, image_url=image_url,
-        source="TELEGRAM_MEDIA", is_primary=became_primary,
-    )
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        updated = conn.execute(
+            """
+            UPDATE products
+            SET image_url = ?, updated_at = datetime('now')
+            WHERE id = ? AND image_url IS NULL
+            """,
+            (image_url, product_id),
+        )
+        if updated.rowcount == 0:
+            conn.rollback()
+            return False
+        conn.execute(
+            """
+            INSERT INTO product_images
+                (product_id, image_url, local_path, source, is_primary)
+            VALUES (?, ?, ?, 'TELEGRAM_MEDIA', 1)
+            """,
+            (product_id, image_url, local_path),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def toggle_favorite(conn: sqlite3.Connection, product_id: int, favorited: bool) -> None:
@@ -270,10 +289,44 @@ def merge_products(conn: sqlite3.Connection, *, source_product_id: int, target_p
         )
         conn.execute("DELETE FROM product_specs WHERE product_id = ?", (source_product_id,))
 
+        target_image = conn.execute(
+            "SELECT id FROM product_images WHERE product_id = ?", (target_product_id,)
+        ).fetchone()
+        if target_image is None:
+            conn.execute(
+                "UPDATE product_images SET product_id = ? WHERE product_id = ?",
+                (target_product_id, source_product_id),
+            )
+        else:
+            conn.execute("DELETE FROM product_images WHERE product_id = ?", (source_product_id,))
+
         conn.execute(
-            "UPDATE product_images SET product_id = ? WHERE product_id = ?",
+            """
+            INSERT OR IGNORE INTO product_image_jobs
+                (product_id, status, attempts, next_attempt_at, last_error)
+            SELECT ?, status, attempts, next_attempt_at, last_error
+            FROM product_image_jobs
+            WHERE product_id = ?
+            """,
             (target_product_id, source_product_id),
         )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO product_image_candidates
+                (product_id, raw_message_id, status, attempts, last_error, tried_at)
+            SELECT ?, raw_message_id, status, attempts, last_error, tried_at
+            FROM product_image_candidates
+            WHERE product_id = ?
+            """,
+            (target_product_id, source_product_id),
+        )
+        conn.execute(
+            "DELETE FROM product_image_candidates WHERE product_id = ?", (source_product_id,)
+        )
+        conn.execute(
+            "DELETE FROM product_image_jobs WHERE product_id = ?", (source_product_id,)
+        )
+
         conn.execute(
             """
             UPDATE products
@@ -290,6 +343,20 @@ def merge_products(conn: sqlite3.Connection, *, source_product_id: int, target_p
                 target_product_id,
             ),
         )
+
+        conn.execute(
+            """
+            UPDATE product_image_jobs
+            SET status = CASE
+                    WHEN (SELECT image_url FROM products WHERE id = ?) IS NULL
+                    THEN 'PENDING' ELSE 'READY' END,
+                next_attempt_at = datetime('now'), locked_at = NULL,
+                updated_at = datetime('now')
+            WHERE product_id = ?
+            """,
+            (target_product_id, target_product_id),
+        )
+
 
         conn.execute(
             "UPDATE promotions SET product_id = ? WHERE product_id = ?",

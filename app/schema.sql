@@ -155,6 +155,33 @@ CREATE TABLE IF NOT EXISTS product_images (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS product_image_jobs (
+    product_id INTEGER PRIMARY KEY REFERENCES products (id),
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+    locked_at TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_product_image_jobs_status
+    ON product_image_jobs (status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS product_image_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products (id),
+    raw_message_id INTEGER NOT NULL REFERENCES raw_messages (id),
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    tried_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (product_id, raw_message_id)
+);
+CREATE INDEX IF NOT EXISTS idx_product_image_candidates_product
+    ON product_image_candidates (product_id, status, created_at);
+
 CREATE TABLE IF NOT EXISTS favorites (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id INTEGER NOT NULL UNIQUE REFERENCES products (id),

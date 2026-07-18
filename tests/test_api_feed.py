@@ -12,6 +12,7 @@ def _seed_product_with_promotion(conn, *, canonical_title="Motorola Moto G56 5G 
                                   installment_price=None, installment_no_interest=None):
     product_id = insert_product(
         conn, canonical_title=canonical_title, variant_key=f"{brand}|g56|256|8",
+        image_url="/media/moto-g56.jpg",
         brand=brand, model="moto g56 5g", storage_gb=256, ram_gb=8, category="smartphone",
     )
     raw_id = insert_raw_message(
@@ -89,6 +90,7 @@ def test_feed_filters_by_category(api_client):
     _seed_product_with_promotion(conn, canonical_title="Moto G56", brand="motorola")
     insert_product(
         conn, canonical_title="Notebook Dell Inspiron", variant_key="dell|inspiron|256|8",
+        image_url="/media/notebook.jpg",
         brand="dell", category="notebook",
     )
 
@@ -101,7 +103,7 @@ def test_feed_filters_by_category(api_client):
 def test_feed_respects_limit(api_client):
     client, conn = api_client
     for i in range(5):
-        insert_product(conn, canonical_title=f"Produto {i}", variant_key=f"x|{i}|1|1")
+        insert_product(conn, canonical_title=f"Produto {i}", variant_key=f"x|{i}|1|1", image_url=f"/media/{i}.jpg")
 
     response = client.get("/api/v1/feed", params={"limit": 2})
     assert len(response.json()) == 2

@@ -95,11 +95,14 @@ def test_attach_product_image_second_call_does_not_replace_primary(db_conn):
     product_id = insert_product(db_conn, canonical_title="Produto Teste", variant_key="t|t|1|1")
     attach_product_image(db_conn, product_id=product_id, local_path="data/images/1_2_3.jpg")
 
-    attach_product_image(db_conn, product_id=product_id, local_path="data/images/4_5_6.jpg")
+    attached = attach_product_image(
+        db_conn, product_id=product_id, local_path="data/images/4_5_6.jpg",
+    )
 
     product = db_conn.execute("SELECT image_url FROM products WHERE id = ?", (product_id,)).fetchone()
     assert product["image_url"] == "/media/1_2_3.jpg"
     count = db_conn.execute(
         "SELECT COUNT(*) FROM product_images WHERE product_id = ?", (product_id,)
     ).fetchone()[0]
-    assert count == 2
+    assert attached is False
+    assert count == 1

@@ -28,7 +28,7 @@ def list_coupons(conn: sqlite3.Connection, *, status: str = "ACTIVE", limit: int
 
 def list_feed_products(conn: sqlite3.Connection, *, category: Optional[str] = None,
                         limit: int = 50, offset: int = 0) -> list:
-    query = "SELECT * FROM products WHERE status = 'ACTIVE'"
+    query = "SELECT * FROM products WHERE status = 'ACTIVE' AND image_url IS NOT NULL"
     params: list = []
     if category:
         query += " AND category = ?"
