@@ -179,6 +179,16 @@ def process_match_queue_once(conn: sqlite3.Connection, config: Config) -> bool:
         "enriched_specs": specs,
     })
 
+    if config.ollama_shadow_mode:
+        update_match_queue_status(
+            conn,
+            item["id"],
+            status="SHADOW_DONE",
+            attempts=attempts,
+            result_json=result_json,
+        )
+        return True
+
     valid_candidate_ids = {candidate["id"] for candidate in candidates}
     if (
         result.decision == "MATCH"

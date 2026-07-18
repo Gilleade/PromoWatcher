@@ -38,6 +38,9 @@ class Config:
     ollama_match_model: str = os.getenv("OLLAMA_MATCH_MODEL", "qwen3:4b-instruct")
     ollama_timeout: float = float(os.getenv("OLLAMA_TIMEOUT", "20"))
     ollama_keep_alive: str = os.getenv("OLLAMA_KEEP_ALIVE", "5m")
+    # Proteção temporária: a IA analisa e registra a decisão, mas não pode
+    # criar produtos nem associar promoções enquanto a nova taxonomia é validada.
+    ollama_shadow_mode: bool = _bool("OLLAMA_SHADOW_MODE", "true")
 
 
 def get_config() -> Config:
