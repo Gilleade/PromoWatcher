@@ -14,6 +14,7 @@ from app.database import (
     update_match_queue_status,
     update_promotion_product_match,
 )
+from app.products.hybrid_classifier import classify_hybrid
 from app.products.matcher import find_candidates
 from app.products.ollama_client import (
     OllamaExtractionResult,
@@ -152,10 +153,27 @@ def process_match_queue_once(conn: sqlite3.Connection, config: Config) -> bool:
         return True
     raw_text = promotion["raw_message_text"]
 
+    original_specs = dict(specs)
     extraction = None
-    if config.ollama_enabled and (not specs.get("brand") or not specs.get("model")):
+    hybrid = None
+    if config.ollama_enabled and (
+        config.ollama_shadow_mode or not specs.get("brand") or not specs.get("model")
+    ):
         extraction = extract_specs_via_ollama(config, raw_text)
-        specs = _merge_missing_specs(specs, extraction)
+        if config.ollama_shadow_mode:
+            hybrid = classify_hybrid(
+                deterministic_specs=original_specs,
+                ai_extraction=extraction,
+                raw_text=raw_text,
+            )
+            specs = dict(original_specs)
+            specs.update(hybrid.validated_ai_fields)
+            found_fields = sum(
+                specs.get(field) is not None for field in ("brand", "model", "storage_gb")
+            )
+            specs["completeness_confidence"] = found_fields / 3.0
+        else:
+            specs = _merge_missing_specs(specs, extraction)
 
     raw_candidates = json.loads(item["candidate_products_json"] or "[]")
     candidate_ids = {
@@ -171,13 +189,23 @@ def process_match_queue_once(conn: sqlite3.Connection, config: Config) -> bool:
     candidates = _candidate_dicts(candidate_rows)
 
     result = disambiguate_product(config, extracted=specs, raw_text=raw_text, candidates=candidates)
-    result_json = json.dumps({
+    result_payload = {
         "decision": result.decision,
         "product_id": result.product_id,
         "confidence": result.confidence,
         "reason": result.reason,
         "enriched_specs": specs,
-    })
+    }
+
+    if config.ollama_shadow_mode:
+        hybrid = hybrid or classify_hybrid(
+            deterministic_specs=original_specs,
+            ai_extraction=extraction,
+            raw_text=raw_text,
+        )
+        result_payload["hybrid_classification"] = hybrid.as_dict()
+
+    result_json = json.dumps(result_payload)
 
     if config.ollama_shadow_mode:
         update_match_queue_status(

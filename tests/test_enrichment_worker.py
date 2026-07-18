@@ -253,6 +253,47 @@ def test_ollama_extraction_only_fills_missing_specs(db_conn):
     assert enriched["category"] == "smartphone"
 
 
+def test_shadow_mode_rejects_ai_fields_without_textual_evidence(db_conn):
+    _seed_queue_item(
+        db_conn,
+        specs={
+            "brand": None,
+            "model": None,
+            "storage_gb": None,
+            "ram_gb": None,
+            "category": "smartphone",
+            "completeness_confidence": 0.0,
+        },
+    )
+    extraction = OllamaExtractionResult(
+        ok=True,
+        brand="nike",
+        model="air zoom",
+        storage_gb=1329,
+        ram_gb=1329,
+        category="smartphone",
+    )
+    unsure = OllamaMatchResult(decision="UNSURE", confidence=0.2, reason="revisar")
+
+    with (
+        patch(
+            "app.products.enrichment_worker.extract_specs_via_ollama",
+            return_value=extraction,
+        ),
+        patch(
+            "app.products.enrichment_worker.disambiguate_product",
+            return_value=unsure,
+        ) as mock_match,
+    ):
+        process_match_queue_once(db_conn, Config(ollama_shadow_mode=True))
+
+    assert mock_match.call_args.kwargs["extracted"]["storage_gb"] is None
+    assert mock_match.call_args.kwargs["extracted"]["ram_gb"] is None
+    queue = db_conn.execute("SELECT * FROM product_match_queue").fetchone()
+    hybrid = json.loads(queue["result_json"])["hybrid_classification"]
+    assert set(hybrid["rejected_ai_fields"]) == {"brand", "model", "storage_gb", "ram_gb"}
+
+
 def test_shadow_mode_records_ai_result_without_mutating_catalog(db_conn):
     promotion_id, queue_id = _seed_queue_item(db_conn, candidate_ids=[])
     fake_result = OllamaMatchResult(
@@ -266,7 +307,13 @@ def test_shadow_mode_records_ai_result_without_mutating_catalog(db_conn):
         reason="produto novo",
     )
 
-    with patch("app.products.enrichment_worker.disambiguate_product", return_value=fake_result):
+    with (
+        patch(
+            "app.products.enrichment_worker.extract_specs_via_ollama",
+            return_value=OllamaExtractionResult(ok=False),
+        ),
+        patch("app.products.enrichment_worker.disambiguate_product", return_value=fake_result),
+    ):
         processed = process_match_queue_once(
             db_conn,
             Config(ollama_shadow_mode=True),
@@ -288,3 +335,5 @@ def test_shadow_mode_records_ai_result_without_mutating_catalog(db_conn):
     assert queue["attempts"] == 1
     assert result["decision"] == "NEW"
     assert result["confidence"] == 1.0
+    assert result["hybrid_classification"]["status"] == "UNRESOLVED"
+    assert result["hybrid_classification"]["catalog_version"] == "1.0.0"
