@@ -74,6 +74,7 @@ Principais variáveis:
   (https://my.telegram.org). **Nunca compartilhe ou commite esses valores.**
 - `TELEGRAM_CHATS`: lista de chats a monitorar (vazio = monitora todos).
 - `NOTIFY_CHAT`: chat/canal de destino das notificações aprovadas.
+- `PROMO_BOT_ENABLED`, `PROMO_BOT_TOKEN`, `PROMO_BOT_CHAT_ID`: segundo destino opcional por bot dedicado. O envio atual por `NOTIFY_CHAT` continua independente.
 - `ALERTS_FILE`: caminho do arquivo de alertas (padrão `alerts.json`).
 - `DB_PATH`: caminho do banco SQLite (padrão `data/promowatcher.sqlite3`).
 - `OLLAMA_ENABLED` / `OLLAMA_BASE_URL` / `OLLAMA_MATCH_MODEL`: IA local

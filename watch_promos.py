@@ -18,6 +18,7 @@ from app.services.product_image_worker import (
     enqueue_image_candidate,
     product_image_worker_loop,
 )
+from app.services.telegram_bot_notifier import send_promo_bot_message
 from app.telegram_client import create_client
 
 config = get_config()
@@ -216,6 +217,28 @@ async def handler(event):
                     error_message=str(e),
                 )
                 print(f"[tg] erro ao notificar: {e}")
+
+        if config.promo_bot_enabled:
+            sent, error_code = await asyncio.to_thread(
+                send_promo_bot_message,
+                token=config.promo_bot_token,
+                chat_id=config.promo_bot_chat_id,
+                text=notification_text,
+            )
+            insert_notification(
+                db_conn,
+                promotion_id=result.promotion_id,
+                alert_id=result.matched_alert.id if result.matched_alert else None,
+                product_alert_id=result.product_alert_id,
+                channel="telegram_bot",
+                message_sent=notification_text,
+                status="SENT" if sent else "ERROR",
+                error_message=error_code,
+            )
+            if sent:
+                print(f"[tg-bot] Notificado de {chat_name} (score={result.score})")
+            else:
+                print(f"[tg-bot] erro ao notificar: {error_code}")
 
         if SEND_EMAIL:
             send_email(EMAIL_SUBJECT, notification_text)

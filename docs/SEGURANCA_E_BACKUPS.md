@@ -43,7 +43,7 @@ arquivo sensível aparece na lista de mudanças.
 ## O que nunca fazer
 
 - Nunca exibir ou logar valores reais de `TELEGRAM_API_ID`,
-  `TELEGRAM_API_HASH`, `NOTIFY_CHAT`, tokens ou sessão — inclusive em
+  `TELEGRAM_API_HASH`, `NOTIFY_CHAT`, `PROMO_BOT_TOKEN`, tokens ou sessão — inclusive em
   mensagens de erro (prefira `type(e).__name__` a `str(e)` quando a
   exceção pode conter dados sensíveis).
 - Nunca rodar `git push` sem confirmação explícita — o fluxo de

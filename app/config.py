@@ -20,6 +20,11 @@ class Config:
     notify_chat: str = os.getenv("NOTIFY_CHAT", "").strip() or "me"
     session_name: str = os.getenv("SESSION_NAME", "tg_promos_session")
 
+    # Segundo destino opcional: bot dedicado para alertas de promoções.
+    promo_bot_enabled: bool = _bool("PROMO_BOT_ENABLED", "false")
+    promo_bot_token: str = os.getenv("PROMO_BOT_TOKEN", "").strip()
+    promo_bot_chat_id: str = os.getenv("PROMO_BOT_CHAT_ID", "").strip()
+
     db_path: str = os.getenv("DB_PATH", os.path.join("data", "promowatcher.sqlite3"))
     alerts_file: str = os.getenv("ALERTS_FILE", "alerts.json")
 

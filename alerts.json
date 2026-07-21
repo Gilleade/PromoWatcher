@@ -13,5 +13,103 @@
     "bug_mode": true,
     "min_score": 0,
     "send_to_telegram": true
+  },
+  {
+    "name": "iPhone 17 base",
+    "enabled": true,
+    "alert_type": "PRODUCT_RULE",
+    "required": [
+      "iphone",
+      "17"
+    ],
+    "any": [],
+    "exclude": [
+      "17e",
+      "pro",
+      "max",
+      "air",
+      "capa",
+      "pelicula",
+      "acessorio",
+      "usado",
+      "seminovo",
+      "recondicionado"
+    ],
+    "max_price": null,
+    "min_discount_percent": 0,
+    "bug_mode": false,
+    "min_score": 40,
+    "send_to_telegram": true
+  },
+  {
+    "name": "iPhone 17e",
+    "enabled": true,
+    "alert_type": "PRODUCT_RULE",
+    "required": [
+      "iphone",
+      "17e"
+    ],
+    "any": [],
+    "exclude": [
+      "capa",
+      "pelicula",
+      "acessorio",
+      "usado",
+      "seminovo",
+      "recondicionado"
+    ],
+    "max_price": null,
+    "min_discount_percent": 0,
+    "bug_mode": false,
+    "min_score": 40,
+    "send_to_telegram": true
+  },
+  {
+    "name": "Motorola Edge 70",
+    "enabled": true,
+    "alert_type": "PRODUCT_RULE",
+    "required": [
+      "edge",
+      "70"
+    ],
+    "any": [],
+    "exclude": [
+      "pro",
+      "capa",
+      "pelicula",
+      "acessorio",
+      "usado",
+      "seminovo",
+      "recondicionado"
+    ],
+    "max_price": null,
+    "min_discount_percent": 0,
+    "bug_mode": false,
+    "min_score": 40,
+    "send_to_telegram": true
+  },
+  {
+    "name": "Motorola Edge 70 Pro",
+    "enabled": true,
+    "alert_type": "PRODUCT_RULE",
+    "required": [
+      "edge",
+      "70",
+      "pro"
+    ],
+    "any": [],
+    "exclude": [
+      "capa",
+      "pelicula",
+      "acessorio",
+      "usado",
+      "seminovo",
+      "recondicionado"
+    ],
+    "max_price": null,
+    "min_discount_percent": 0,
+    "bug_mode": false,
+    "min_score": 40,
+    "send_to_telegram": true
   }
 ]
