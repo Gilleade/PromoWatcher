@@ -1,0 +1,242 @@
+from unittest.mock import Mock, patch
+
+from app.models import AlertDef
+from app.services.message_processor import process
+
+
+def _bug_alert():
+    return AlertDef(name="Possível BUG geral", required=[], any=["bug"], exclude=[],
+                     bug_mode=True, min_score=0, send_to_telegram=True)
+
+
+def _promotion_row(conn, promotion_id):
+    return conn.execute("SELECT * FROM promotions WHERE id = ?", (promotion_id,)).fetchone()
+
+
+def test_new_identifiable_product_creates_product_and_links_promotion(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG: Motorola Moto G56 5G 256GB 8GB RAM por R$ 1.093,90",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    assert row["product_match_status"] == "AUTO_NEW"
+    assert row["product_id"] is not None
+
+    product = db_conn.execute(
+        "SELECT * FROM products WHERE id = ?", (row["product_id"],)
+    ).fetchone()
+    assert product["brand"] == "motorola"
+    assert product["storage_gb"] == 256
+
+
+def test_repeated_product_from_different_group_auto_matches(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        first = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG: Motorola Moto G56 5G 256GB 8GB RAM por R$ 1.093,90 na Amazon",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+        second = process(
+            db_conn,
+            telegram_message_id=2,
+            chat_id=200,
+            chat_title="Grupo B",
+            sender_id=None,
+            message_text="BUG: MOTOROLA MOTO G56 5G 256GB 8GB RAM por R$ 1.093,90 - CUPOM no Magalu",
+            message_date="2026-07-01T11:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row_first = _promotion_row(db_conn, first.promotion_id)
+    row_second = _promotion_row(db_conn, second.promotion_id)
+
+    assert row_first["product_match_status"] == "AUTO_NEW"
+    assert row_second["product_match_status"] == "AUTO_MATCH"
+    assert row_second["product_id"] == row_first["product_id"]
+
+    count = db_conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+    assert count == 1
+
+
+def test_unidentifiable_product_goes_to_review_queue(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG imperdível por R$ 199,90, corre que acaba!",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    assert row["product_match_status"] == "NEEDS_REVIEW"
+    assert row["product_id"] is None
+
+    queue_row = db_conn.execute(
+        "SELECT * FROM product_match_queue WHERE promotion_id = ?", (result.promotion_id,)
+    ).fetchone()
+    assert queue_row is not None
+    assert queue_row["status"] == "PENDING"
+
+
+def test_installment_info_is_stored_on_promotion_and_product(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text=(
+                "BUG: Monitor AOC 22\" 120Hz 1ms\n\n"
+                "DE R$ 499,00\n"
+                "POR R$ 420,00\n"
+                "Em até 8x de R$ 52,50 sem juros"
+            ),
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    assert row["price"] == 420.0
+    assert row["installment_count"] == 8
+    assert row["installment_price"] == 52.5
+    assert row["installment_no_interest"] == 1
+
+    product = db_conn.execute(
+        "SELECT * FROM products WHERE id = ?", (row["product_id"],)
+    ).fetchone()
+    assert product["last_installment_count"] == 8
+    assert product["last_installment_price"] == 52.5
+
+
+def test_local_image_path_sets_product_image(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG: Motorola Moto G56 5G 256GB 8GB RAM por R$ 1.093,90",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+            local_image_path="data/images/100_1_999.jpg",
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    product = db_conn.execute(
+        "SELECT * FROM products WHERE id = ?", (row["product_id"],)
+    ).fetchone()
+    assert product["image_url"] == "/media/100_1_999.jpg"
+    image_count = db_conn.execute(
+        "SELECT COUNT(*) FROM product_images WHERE product_id = ?", (row["product_id"],)
+    ).fetchone()[0]
+    assert image_count == 1
+
+
+def test_no_local_image_path_is_a_no_op(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG: Motorola Moto G56 5G 256GB 8GB RAM por R$ 1.093,90",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    product = db_conn.execute(
+        "SELECT image_url FROM products WHERE id = ?", (row["product_id"],)
+    ).fetchone()
+    assert product["image_url"] is None
+
+
+def test_needs_review_with_image_creates_no_product_images_row(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG imperdível por R$ 199,90, corre que acaba!",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+            local_image_path="data/images/100_1_999.jpg",
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    assert row["product_id"] is None
+    count = db_conn.execute("SELECT COUNT(*) FROM product_images").fetchone()[0]
+    assert count == 0
+
+
+def test_message_without_price_skips_product_matching(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text="BUG detectado, sem preço divulgado ainda",
+            message_date="2026-07-01T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    row = _promotion_row(db_conn, result.promotion_id)
+    assert row["product_match_status"] == "UNMATCHED"
+    assert row["product_id"] is None
+
+    count = db_conn.execute("SELECT COUNT(*) FROM product_match_queue").fetchone()[0]
+    assert count == 0
+
+
+def test_multi_product_list_goes_to_review_without_creating_catalog_item(db_conn):
+    with patch("app.parser.link_resolver.requests.head", side_effect=ConnectionError):
+        result = process(
+            db_conn,
+            telegram_message_id=1,
+            chat_id=100,
+            chat_title="Grupo A",
+            sender_id=None,
+            message_text=(
+                "BUG: Placas-mãe em Oferta\n"
+                "ASUS Prime B550M-A WiFi II - R$ 546\nhttps://loja/a\n"
+                "Gigabyte B840M Eagle WiFi6 - R$ 599\nhttps://loja/b\n"
+                "ASRock B650M-HDV/M.2 - R$ 659\nhttps://loja/c"
+            ),
+            message_date="2026-07-16T10:00:00",
+            alerts=[_bug_alert()],
+        )
+
+    promotion = _promotion_row(db_conn, result.promotion_id)
+    assert promotion["product_match_status"] == "NEEDS_REVIEW"
+    assert promotion["product_id"] is None
+    assert db_conn.execute("SELECT COUNT(*) FROM products").fetchone()[0] == 0
+
+    queue = db_conn.execute(
+        "SELECT extracted_specs_json FROM product_match_queue WHERE promotion_id = ?",
+        (result.promotion_id,),
+    ).fetchone()
+    assert "MULTIPLE_PRODUCTS" in queue["extracted_specs_json"]

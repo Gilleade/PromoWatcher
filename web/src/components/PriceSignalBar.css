@@ -1,0 +1,63 @@
+.price-signal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.price-signal-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.price-signal-text-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.price-signal-tone {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.signal-low {
+  color: var(--accent-green);
+}
+
+.signal-mid {
+  color: var(--accent-yellow);
+}
+
+.signal-high {
+  color: var(--accent-red);
+}
+
+.price-signal-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow), var(--accent-red));
+}
+
+.price-signal-marker {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  border: 2px solid var(--bg-app);
+  transform: translate(-50%, -50%);
+}
+
+.price-signal-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
